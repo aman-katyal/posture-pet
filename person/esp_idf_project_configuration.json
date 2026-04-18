@@ -1,0 +1,31 @@
+{
+  "starkhacks": {
+    "build": {
+      "compileArgs": [],
+      "ninjaArgs": [],
+      "buildDirectoryPath": "${workspaceFolder}/build",
+      "sdkconfigDefaults": [],
+      "sdkconfigFilePath": "${workspaceFolder}/sdkconfig"
+    },
+    "env": {
+      "IDF_PATH": "C:\\esp\\v6.0\\esp-idf",
+      "IDF_TOOLS_PATH": "C:\\Users\\aman\\.espressif"
+    },
+    "flashBaudRate": "921600",
+    "idfTarget": "esp32s3",
+    "monitorBaudRate": "115200",
+    "openOCD": {
+      "debugLevel": 2,
+      "configs": [
+        "board/esp32s3-builtin.cfg"
+      ],
+      "args": []
+    },
+    "tasks": {
+      "preBuild": "",
+      "preFlash": "",
+      "postBuild": "",
+      "postFlash": ""
+    }
+  }
+}
