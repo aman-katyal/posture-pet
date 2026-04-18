@@ -26,5 +26,7 @@ private:
     MPU_t mpuR;    // Bus 0, Addr 0x69
     
     MahonyFilter qStates[NUM_SENSORS];
+    Bias gyroBias[NUM_SENSORS];
     int64_t lastTime = 0;
+    int64_t startTime = 0;
 };

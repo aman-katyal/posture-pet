@@ -4,9 +4,6 @@
 #include "host/ble_hs.h"
 
 struct Orientation {
-    float roll;
-    float pitch;
-    float yaw;
     float qw;
     float qx;
     float qy;

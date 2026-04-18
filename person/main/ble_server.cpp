@@ -71,6 +71,8 @@ void BLEServer::startAdvertising() {
     memset(&adv_params, 0, sizeof(adv_params));
     adv_params.conn_mode = BLE_GAP_CONN_MODE_UND;
     adv_params.disc_mode = BLE_GAP_DISC_MODE_GEN;
+    adv_params.itvl_min = 160; // 100ms (160 * 0.625ms)
+    adv_params.itvl_max = 160; // 100ms
     ble_gap_adv_start(BLE_OWN_ADDR_PUBLIC, NULL, BLE_HS_FOREVER,
                            &adv_params, BLEServer::gapEventCb, NULL);
 }
