@@ -3,6 +3,7 @@
 #include "I2Cbus.hpp"
 #include "ble_server.hpp"
 #include "quaternions.h"
+#include "calibration.h"
 
 class IMUManager {
 public:
@@ -12,6 +13,8 @@ public:
 private:
     IMUManager() : mpu(i2c0) {}
     MPU_t mpu;
-    Quaternion qState;
+    uint8_t magAsa[3];
+    MahonyFilter qState;
     int64_t lastTime = 0;
+    int64_t startTime = 0;
 };

@@ -5,7 +5,10 @@
 #define M_PI 3.14159265358979323846f
 #endif
 
-static float integralFBx = 0.0f, integralFBy = 0.0f, integralFBz = 0.0f;
+void mahony_init(MahonyFilter* f) {
+    f->w = 1.0f; f->x = 0.0f; f->y = 0.0f; f->z = 0.0f;
+    f->ix = 0.0f; f->iy = 0.0f; f->iz = 0.0f;
+}
 
 // Wrap angle to be within -180 to 180 degrees
 static float wrap_angle(float angle) {
@@ -14,13 +17,8 @@ static float wrap_angle(float angle) {
     return angle;
 }
 
-void quaternion_init(Quaternion* q) {
-    q->w = 1.0f; q->x = 0.0f; q->y = 0.0f; q->z = 0.0f;
-    integralFBx = 0.0f; integralFBy = 0.0f; integralFBz = 0.0f;
-}
-
-void mahony_update(Quaternion* q, float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, float dt, float kp, float ki) {
-    float q1 = q->w, q2 = q->x, q3 = q->y, q4 = q->z;
+void mahony_update(MahonyFilter* f, float gx, float gy, float gz, float ax, float ay, float az, float mx, float my, float mz, float dt, float kp, float ki) {
+    float q1 = f->w, q2 = f->x, q3 = f->y, q4 = f->z;
     float norm;
     float hx, hy, bx, bz;
     float vx, vy, vz, wx, wy, wz;
@@ -67,43 +65,43 @@ void mahony_update(Quaternion* q, float gx, float gy, float gz, float ax, float 
     }
 
     if (ki > 0.0f) {
-        integralFBx += ex * ki * dt;
-        integralFBy += ey * ki * dt;
-        integralFBz += ez * ki * dt;
+        f->ix += ex * ki * dt;
+        f->iy += ey * ki * dt;
+        f->iz += ez * ki * dt;
     } else {
-        integralFBx = 0.0f; integralFBy = 0.0f; integralFBz = 0.0f;
+        f->ix = 0.0f; f->iy = 0.0f; f->iz = 0.0f;
     }
 
     // Apply feedback terms
-    gx += kp * ex + integralFBx;
-    gy += kp * ey + integralFBy;
-    gz += kp * ez + integralFBz;
+    gx += kp * ex + f->ix;
+    gy += kp * ey + f->iy;
+    gz += kp * ez + f->iz;
 
     // Integrate rate of change of quaternion
-    float pa = q2, pb = q3, pc = q4;
-    q1 += (-pa * gx - pb * gy - pc * gz) * (0.5f * dt);
-    q2 += (q1 * gx + pb * gz - pc * gy) * (0.5f * dt);
-    q3 += (q1 * gy - pa * gz + pc * gx) * (0.5f * dt);
-    q4 += (q1 * gz + pa * gy - pb * gx) * (0.5f * dt);
+    float dq1 = (-q2 * gx - q3 * gy - q4 * gz) * (0.5f * dt);
+    float dq2 = (q1 * gx + q3 * gz - q4 * gy) * (0.5f * dt);
+    float dq3 = (q1 * gy - q2 * gz + q4 * gx) * (0.5f * dt);
+    float dq4 = (q1 * gz + q2 * gy - q3 * gx) * (0.5f * dt);
+    f->w += dq1; f->x += dq2; f->y += dq3; f->z += dq4;
 
     // Normalise quaternion
-    norm = sqrtf(q1 * q1 + q2 * q2 + q3 * q3 + q4 * q4);
-    q->w = q1 / norm; q->x = q2 / norm; q->y = q3 / norm; q->z = q4 / norm;
+    norm = sqrtf(f->w * f->w + f->x * f->x + f->y * f->y + f->z * f->z);
+    f->w /= norm; f->x /= norm; f->y /= norm; f->z /= norm;
 }
 
-float quaternion_get_roll(const Quaternion* q) {
-    float roll = atan2f(2.0f * (q->w * q->x + q->y * q->z), 1.0f - 2.0f * (q->x * q->x + q->y * q->y)) * 180.0f / M_PI;
+float mahony_get_roll(const MahonyFilter* f) {
+    float roll = atan2f(2.0f * (f->w * f->x + f->y * f->z), 1.0f - 2.0f * (f->x * f->x + f->y * f->y)) * 180.0f / M_PI;
     return wrap_angle(roll);
 }
 
-float quaternion_get_pitch(const Quaternion* q) {
-    float sinp = 2.0f * (q->w * q->y - q->z * q->x);
+float mahony_get_pitch(const MahonyFilter* f) {
+    float sinp = 2.0f * (f->w * f->y - f->z * f->x);
     if (fabs(sinp) >= 1.0f) sinp = copysignf(1.0f, sinp);
     float pitch = asinf(sinp) * 180.0f / M_PI;
     return wrap_angle(pitch);
 }
 
-float quaternion_get_yaw(const Quaternion* q) {
-    float yaw = atan2f(2.0f * (q->w * q->z + q->x * q->y), 1.0f - 2.0f * (q->y * q->y + q->z * q->z)) * 180.0f / M_PI;
+float mahony_get_yaw(const MahonyFilter* f) {
+    float yaw = atan2f(2.0f * (f->w * f->z + f->x * f->y), 1.0f - 2.0f * (f->y * f->y + f->z * f->z)) * 180.0f / M_PI;
     return wrap_angle(yaw);
 }
