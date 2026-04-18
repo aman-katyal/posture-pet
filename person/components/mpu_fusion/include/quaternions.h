@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 #ifndef QUATERNIONS_H
 #define QUATERNIONS_H
 
@@ -14,4 +17,8 @@ float mahony_get_roll(const MahonyFilter* f);
 float mahony_get_pitch(const MahonyFilter* f);
 float mahony_get_yaw(const MahonyFilter* f);
 
+#endif
+
+#ifdef __cplusplus
+}
 #endif

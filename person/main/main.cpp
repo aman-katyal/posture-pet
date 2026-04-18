@@ -8,8 +8,6 @@
 #include "imu_manager.hpp"
 #include "calibration.h"
 
-static const char *TAG = "MAIN";
-
 extern "C" void app_main(void) {
     esp_err_t ret = nvs_flash_init();
     if (ret == ESP_ERR_NVS_NO_FREE_PAGES || ret == ESP_ERR_NVS_NEW_VERSION_FOUND) {
@@ -32,15 +30,18 @@ extern "C" void app_main(void) {
         const TickType_t xFrequency = pdMS_TO_TICKS(10); // 100Hz
 
         while(1) {
-            Orientation o = imu.update();
+            MultiOrientation mo = imu.update();
             if (ble.isConnected()) {
-                ble.notifyOrientation(o);
+                ble.notifyMultiOrientation(mo);
             }
-            // Reduced log frequency to avoid flooding console at 100Hz
+            
+            // Minimal diagnostic log
             static int count = 0;
-            if (count++ % 10 == 0) {
-                ESP_LOGI("MPU_DATA", "Roll: %.2f | Pitch: %.2f | Yaw: %.2f [%s]", 
-                         o.roll, o.pitch, o.yaw, calib_is_still() ? "S" : "M");
+            if (count++ % 100 == 0) {
+                ESP_LOGI("APP", "Posture Update [N, L, R] | Neck Pitch: %.1f | L Shoulder: %.1f | R Shoulder: %.1f", 
+                         mo.sensors[SENSOR_NECK].pitch,
+                         mo.sensors[SENSOR_SHOULDER_L].pitch,
+                         mo.sensors[SENSOR_SHOULDER_R].pitch);
             }
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
         }

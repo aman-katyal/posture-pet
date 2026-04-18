@@ -1,3 +1,6 @@
+#ifdef __cplusplus
+extern "C" {
+#endif
 #ifndef CALIBRATION_H
 #define CALIBRATION_H
 
@@ -14,4 +17,8 @@ Bias calib_get_gyro_bias();
 Bias calib_get_mag_offset();
 int calib_is_still();
 
+#endif
+
+#ifdef __cplusplus
+}
 #endif

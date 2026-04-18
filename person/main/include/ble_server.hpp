@@ -7,6 +7,14 @@ struct Orientation {
     float roll;
     float pitch;
     float yaw;
+    float qw;
+    float qx;
+    float qy;
+    float qz;
+};
+
+struct MultiOrientation {
+    Orientation sensors[3];
 };
 
 class BLEServer {
@@ -14,7 +22,7 @@ public:
     static BLEServer& getInstance();
     void init();
     void startAdvertising();
-    void notifyOrientation(const Orientation& orientation);
+    void notifyMultiOrientation(const MultiOrientation& mo);
     bool isConnected() const { return connActive; }
 
 private:

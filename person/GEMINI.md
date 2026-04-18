@@ -33,4 +33,4 @@
 ## Key References & Conventions
 - **Calibration**: 200-sample static calibration runs on boot. Keep device still.
 - **Drift**: Yaw will drift over time as no magnetometer grounding is implemented in the current fusion loop.
-- **Build**: Use `idf.py build` and flash over `COM4` (typical).
+- **Build**: Use `idf.py build` and flash over `COM7` (typical).

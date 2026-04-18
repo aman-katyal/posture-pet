@@ -100,8 +100,8 @@ void BLEServer::onSyncCb() {
     BLEServer::getInstance().startAdvertising();
 }
 
-void BLEServer::notifyOrientation(const Orientation& orientation) {
+void BLEServer::notifyMultiOrientation(const MultiOrientation& mo) {
     if (!connActive) return;
-    struct os_mbuf *om = ble_hs_mbuf_from_flat(&orientation, sizeof(orientation));
+    struct os_mbuf *om = ble_hs_mbuf_from_flat(&mo, sizeof(mo));
     ble_gatts_notify_custom(connHandle, charHandle, om);
 }
