@@ -54,14 +54,31 @@ Orientation IMUManager::update() {
 
         // MPU9250 Mag axes are different from Accel/Gyro
         // Typically: Accel X, Y, Z -> Mag Y, X, -Z for standard mounting
-        float mx = (float)mpud::math::magAdjust(magRaw.y, magAsa[1]); 
-        float my = (float)mpud::math::magAdjust(magRaw.x, magAsa[0]);
-        float mz = -(float)mpud::math::magAdjust(magRaw.z, magAsa[2]);
+        float mx_raw = (float)mpud::math::magAdjust(magRaw.y, magAsa[1]); 
+        float my_raw = (float)mpud::math::magAdjust(magRaw.x, magAsa[0]);
+        float mz_raw = -(float)mpud::math::magAdjust(magRaw.z, magAsa[2]);
+
+        // Magnetometer rolling calibration
+        calib_update_mag(mx_raw, my_raw, mz_raw);
+        Bias mag_offset = calib_get_mag_offset();
+        float mx = mx_raw - mag_offset.x;
+        float my = my_raw - mag_offset.y;
+        float mz = mz_raw - mag_offset.z;
 
         int64_t now = esp_timer_get_time();
         float dt = (float)(now - lastTime) / 1000000.0f;
         float elapsed = (float)(now - startTime) / 1000000.0f;
         lastTime = now;
+
+        // Diagnostic logging
+        static int diag_count = 0;
+        if (diag_count++ % 100 == 0) {
+            ESP_LOGD(TAG, "Raw Accel: %.3f %.3f %.3f | Gyro: %.3f %.3f %.3f | Mag: %.1f %.1f %.1f", 
+                     accel.x, accel.y, accel.z, gyro_raw.x, gyro_raw.y, gyro_raw.z, mx_raw, my_raw, mz_raw);
+            ESP_LOGD(TAG, "Bias Gyro: %.5f %.5f %.5f | Mag Offset: %.1f %.1f %.1f",
+                     bias.x, bias.y, bias.z, mag_offset.x, mag_offset.y, mag_offset.z);
+            ESP_LOGD(TAG, "Stillness: %s", calib_is_still() ? "STILL" : "MOVING");
+        }
 
         // Adaptive Gain
         float kp = (elapsed < 10.0f) ? 10.0f : 0.5f;

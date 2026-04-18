@@ -6,6 +6,7 @@
 
 #include "ble_server.hpp"
 #include "imu_manager.hpp"
+#include "calibration.h"
 
 static const char *TAG = "MAIN";
 
@@ -26,6 +27,10 @@ extern "C" void app_main(void) {
     xTaskCreate([](void* p){
         auto& ble = BLEServer::getInstance();
         auto& imu = IMUManager::getInstance();
+        
+        TickType_t xLastWakeTime = xTaskGetTickCount();
+        const TickType_t xFrequency = pdMS_TO_TICKS(10); // 100Hz
+
         while(1) {
             Orientation o = imu.update();
             if (ble.isConnected()) {
@@ -34,9 +39,10 @@ extern "C" void app_main(void) {
             // Reduced log frequency to avoid flooding console at 100Hz
             static int count = 0;
             if (count++ % 10 == 0) {
-                ESP_LOGI("MPU_DATA", "Roll: %.2f | Pitch: %.2f | Yaw: %.2f", o.roll, o.pitch, o.yaw);
+                ESP_LOGI("MPU_DATA", "Roll: %.2f | Pitch: %.2f | Yaw: %.2f [%s]", 
+                         o.roll, o.pitch, o.yaw, calib_is_still() ? "S" : "M");
             }
-            vTaskDelay(pdMS_TO_TICKS(10));
+            vTaskDelayUntil(&xLastWakeTime, xFrequency);
         }
     }, "imu_task", 4096, NULL, 5, NULL);
 }

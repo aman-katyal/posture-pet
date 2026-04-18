@@ -3,12 +3,15 @@
 #include <string.h>
 
 #define WINDOW_SIZE 50
-#define STILL_THRESHOLD 0.005f // variance in G^2
+#define STILL_THRESHOLD 0.01f // variance in G^2
 
 static float a_win[WINDOW_SIZE][3];
 static int win_idx = 0;
 static Bias gyro_bias = {0.0f, 0.0f, 0.0f};
 static int still_count = 0;
+
+static float mag_min[3] = {1e6, 1e6, 1e6}, mag_max[3] = {-1e6, -1e6, -1e6};
+static Bias mag_offset = {0.0f, 0.0f, 0.0f};
 
 void calib_init() {
     memset(a_win, 0, sizeof(a_win));
@@ -17,6 +20,14 @@ void calib_init() {
     gyro_bias.y = 0.0f;
     gyro_bias.z = 0.0f;
     still_count = 0;
+
+    for (int i = 0; i < 3; i++) {
+        mag_min[i] = 1e6f;
+        mag_max[i] = -1e6f;
+    }
+    mag_offset.x = 0.0f;
+    mag_offset.y = 0.0f;
+    mag_offset.z = 0.0f;
 }
 
 void calib_update(float ax, float ay, float az, float gx, float gy, float gz) {
@@ -59,5 +70,17 @@ void calib_update(float ax, float ay, float az, float gx, float gy, float gz) {
     }
 }
 
+void calib_update_mag(float mx, float my, float mz) {
+    float mag[3] = {mx, my, mz};
+    for (int i = 0; i < 3; i++) {
+        if (mag[i] < mag_min[i]) mag_min[i] = mag[i];
+        if (mag[i] > mag_max[i]) mag_max[i] = mag[i];
+    }
+    mag_offset.x = (mag_min[0] + mag_max[0]) / 2.0f;
+    mag_offset.y = (mag_min[1] + mag_max[1]) / 2.0f;
+    mag_offset.z = (mag_min[2] + mag_max[2]) / 2.0f;
+}
+
 Bias calib_get_gyro_bias() { return gyro_bias; }
+Bias calib_get_mag_offset() { return mag_offset; }
 int calib_is_still() { return still_count > 100; }

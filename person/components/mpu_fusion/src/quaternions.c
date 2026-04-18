@@ -68,8 +68,6 @@ void mahony_update(MahonyFilter* f, float gx, float gy, float gz, float ax, floa
         f->ix += ex * ki * dt;
         f->iy += ey * ki * dt;
         f->iz += ez * ki * dt;
-    } else {
-        f->ix = 0.0f; f->iy = 0.0f; f->iz = 0.0f;
     }
 
     // Apply feedback terms
