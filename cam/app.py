@@ -4,6 +4,7 @@ import numpy as np
 import time
 import json
 import asyncio
+import socket
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -103,6 +104,12 @@ class Camera:
         self.calibration_requested = False
         self.sensitivity = 1.0
         self.running = True
+
+        # --- UDP SOCKET SETUP (Target: Uno Q) ---
+        self.udp_ip = "10.10.11.84"
+        self.udp_port = 9999
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+
         self.thread = threading.Thread(target=self.update, daemon=True)
         self.thread.start()
 
@@ -198,6 +205,17 @@ class Camera:
 
                 is_violating = (max_d >= 1.0)
 
+                # --- SEND CLASSIFICATION TO UNO Q VIA UDP ---
+                try:
+                    payload = json.dumps({
+                        "class": self.classification,
+                        "conf": self.confidence,
+                        "score": self.posture_score
+                    }).encode('utf-8')
+                    self.sock.sendto(payload, (self.udp_ip, self.udp_port))
+                except Exception:
+                    pass # Keep the loop running if network is down
+
                 self.violation_history.append(is_violating)
                 if len(self.violation_history) > 10: self.violation_history.pop(0)
                 
@@ -223,7 +241,7 @@ class Camera:
                 draw_bar(100, "LEAN", lean_dev, t_lean*2, (0, 255, 0) if lean_dev < t_lean else (0, 0, 255))
 
                 cv2.putText(frame, f"SCORE: {self.posture_score}%", (15, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.status_color, 2)
-                cv2.putText(frame, self.status_msg, (15, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.6, self.status_color, 2)
+                cv2.putText(frame, f"{self.status_msg} ({self.sensitivity}x)", (15, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.6, self.status_color, 2)
                 cv2.putText(frame, "C: CALIBRATE • +/-: SENSITIVITY", (15, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (120, 120, 120), 1)
                 
                 mp.solutions.drawing_utils.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,

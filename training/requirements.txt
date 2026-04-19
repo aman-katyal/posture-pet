@@ -1,0 +1,6 @@
+edgeimpulse
+tensorflow-rocm
+numpy<2
+pandas
+matplotlib
+scikit-learn

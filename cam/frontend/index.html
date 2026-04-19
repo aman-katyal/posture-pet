@@ -291,8 +291,8 @@
             if (k === 'm') teach('mid');
             if (k === 'b') teach('bad');
             if (k === 'v') toggleCamera();
-            if (e.key === '+') ws.send(JSON.stringify({command: 'increase_sensitivity'}));
-            if (e.key === '-') ws.send(JSON.stringify({command: 'decrease_sensitivity'}));
+            if (e.key === '+' || e.key === '=') ws.send(JSON.stringify({command: 'increase_sensitivity'}));
+            if (e.key === '-' || e.key === '_') ws.send(JSON.stringify({command: 'decrease_sensitivity'}));
         });
         window.addEventListener("resize", () => engine.resize());
     </script>
