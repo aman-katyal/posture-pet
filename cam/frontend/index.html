@@ -2,8 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Posture AI - Stable Babylon 3D</title>
-    <!-- Use a specific stable version to avoid initCache errors -->
+    <title>Posture AI - 3D Human Twin Pro</title>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <style>
         body { margin: 0; background: #050505; color: #fff; font-family: 'Inter', sans-serif; display: flex; height: 100vh; overflow: hidden; }
@@ -11,9 +10,10 @@
         #ui { width: 340px; background: #0f0f0f; border-left: 1px solid #333; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
         .vid { width: 100%; border-radius: 10px; border: 1px solid #444; overflow: hidden; }
         .vid img { width: 100%; display: block; }
-        .stat { padding: 15px; border-radius: 8px; text-align: center; font-weight: 800; border: 1px solid #333; }
-        .good { color: #10b981; background: rgba(16, 185, 129, 0.1); border-color: #10b981; }
-        .bad { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-color: #ef4444; }
+        .stat { padding: 15px; border-radius: 8px; text-align: center; font-weight: 800; border: 1px solid #333; transition: all 0.3s; }
+        .good { color: #10b981; background: rgba(16, 185, 129, 0.1); border-color: #10b981; box-shadow: 0 0 15px rgba(16, 185, 129, 0.2); }
+        .bad { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-color: #ef4444; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
         .btn { padding: 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: #38bdf8; color: #000; }
         .btn-set { background: #10b981; color: #fff; }
         input { background: #1a1a1a; border: 1px solid #444; color: #fff; padding: 6px; border-radius: 4px; width: 60px; text-align: center; }
@@ -42,47 +42,119 @@
         const engine = new BABYLON.Engine(canvas, true);
         let camIndex = 0;
         let nodes = {};
+        let materials = {};
 
         const createScene = function() {
             const scene = new BABYLON.Scene(engine);
             scene.clearColor = new BABYLON.Color4(0.02, 0.02, 0.02, 1);
 
-            const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI/2, Math.PI/2.5, 3.5, new BABYLON.Vector3(0, 0.4, 0), scene);
+            const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI/2, Math.PI/2.5, 4.5, new BABYLON.Vector3(0, 0.5, 0), scene);
             camera.attachControl(canvas, true);
 
             const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+            light.intensity = 0.6;
             const pLight = new BABYLON.PointLight("p", new BABYLON.Vector3(2, 2, 2), scene);
-            pLight.intensity = 0.5;
+            pLight.intensity = 0.4;
 
             // Materials
-            const glowMat = new BABYLON.StandardMaterial("m", scene);
-            glowMat.emissiveColor = new BABYLON.Color3(0.2, 0.7, 1);
-            const chairMat = new BABYLON.StandardMaterial("c", scene);
-            chairMat.diffuseColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+            materials.skin = new BABYLON.StandardMaterial("skin", scene);
+            materials.skin.diffuseColor = new BABYLON.Color3(0.2, 0.6, 0.9);
+            materials.skin.emissiveColor = new BABYLON.Color3(0.05, 0.15, 0.2);
+
+            materials.clothes = new BABYLON.StandardMaterial("clothes", scene);
+            materials.clothes.diffuseColor = new BABYLON.Color3(0.12, 0.12, 0.12);
+
+            materials.chair = new BABYLON.StandardMaterial("chair", scene);
+            materials.chair.diffuseColor = new BABYLON.Color3(0.08, 0.08, 0.08);
 
             // Chair
-            const seat = BABYLON.MeshBuilder.CreateBox("s", {width:0.7, height:0.05, depth:0.7}, scene);
-            seat.position.y = -0.3; seat.material = chairMat;
-            const back = BABYLON.MeshBuilder.CreateBox("b", {width:0.7, height:1.0, depth:0.05}, scene);
-            back.position.set(0, 0.2, -0.35); back.material = chairMat;
+            const seat = BABYLON.MeshBuilder.CreateBox("seat", {width:1.0, height:0.1, depth:1.0}, scene);
+            seat.position.y = -0.3; seat.material = materials.chair;
+            const back = BABYLON.MeshBuilder.CreateBox("back", {width:0.9, height:1.5, depth:0.12}, scene);
+            back.position.set(0, 0.4, -0.5); back.material = materials.chair;
 
-            // Skeleton Hierarchy
-            const root = new BABYLON.TransformNode("root", scene); root.position.y = -0.25;
-            const spineLow = new BABYLON.TransformNode("sl", scene); spineLow.parent = root;
-            const spineMid = new BABYLON.TransformNode("sm", scene); spineMid.parent = spineLow; spineMid.position.y = 0.25;
-            const spineTop = new BABYLON.TransformNode("st", scene); spineTop.parent = spineMid; spineTop.position.y = 0.25;
-            const neck = new BABYLON.TransformNode("n", scene); neck.parent = spineTop; neck.position.y = 0.15;
-            
-            // Visuals
-            const b1 = BABYLON.MeshBuilder.CreateSphere("b1", {diameter:0.15}, scene); b1.parent = spineLow; b1.material = glowMat;
-            const b2 = BABYLON.MeshBuilder.CreateSphere("b2", {diameter:0.12}, scene); b2.parent = spineMid; b2.material = glowMat;
-            const b3 = BABYLON.MeshBuilder.CreateSphere("b3", {diameter:0.12}, scene); b3.parent = spineTop; b3.material = glowMat;
-            const head = BABYLON.MeshBuilder.CreateSphere("h", {diameter:0.3}, scene); head.parent = neck; head.position.y = 0.15; head.material = glowMat;
-            
-            const shL = BABYLON.MeshBuilder.CreateSphere("shL", {diameter:0.1}, scene); shL.parent = spineTop; shL.position.x = -0.3; shL.material = glowMat;
-            const shR = BABYLON.MeshBuilder.CreateSphere("shR", {diameter:0.1}, scene); shR.parent = spineTop; shR.position.x = 0.3; shR.material = glowMat;
+            // Full Body Hierarchy
+            const root = new BABYLON.TransformNode("root", scene);
+            root.position.y = -0.2;
 
-            nodes = { camera, spineLow, spineMid, neck, shL, shR };
+            // Pelvis
+            const pelvis = BABYLON.MeshBuilder.CreateCapsule("pelvis", {radius: 0.14, height: 0.5, orientation: BABYLON.Vector3.Right()}, scene);
+            pelvis.parent = root;
+            pelvis.material = materials.clothes;
+
+            // --- LEGS (Now parented to pelvis for correct positioning) ---
+            const createLeg = (side) => {
+                const thigh = BABYLON.MeshBuilder.CreateCapsule(side + "Thigh", {radius: 0.1, height: 0.5}, scene);
+                thigh.parent = pelvis; // Attach to pelvis
+                thigh.position.set(side === 'l' ? -0.18 : 0.18, -0.05, 0.15); // Shift to front-edge of pelvis
+                thigh.rotation.x = Math.PI / 2.2; // Sit angle
+                thigh.material = materials.clothes;
+
+                const shin = BABYLON.MeshBuilder.CreateCapsule(side + "Shin", {radius: 0.08, height: 0.5}, scene);
+                shin.parent = thigh;
+                shin.position.y = -0.4; // Down from thigh
+                shin.rotation.x = -Math.PI / 2.5; // Knee bend back to vertical
+                shin.material = materials.skin;
+                return { thigh, shin };
+            };
+            createLeg('l'); createLeg('r');
+
+            // --- SPINE & TORSO ---
+            const spineLow = new BABYLON.TransformNode("spineLow", scene);
+            spineLow.parent = root;
+            
+            const spineMid = new BABYLON.TransformNode("spineMid", scene);
+            spineMid.parent = spineLow;
+            spineMid.position.y = 0.25;
+
+            const spineTop = new BABYLON.TransformNode("spineTop", scene);
+            spineTop.parent = spineMid;
+            spineTop.position.y = 0.25;
+
+            const torsoLower = BABYLON.MeshBuilder.CreateBox("torsoLower", {width: 0.48, height: 0.3, depth: 0.25}, scene);
+            torsoLower.parent = spineLow; torsoLower.position.y = 0.15; torsoLower.material = materials.clothes;
+
+            const torsoUpper = BABYLON.MeshBuilder.CreateBox("torsoUpper", {width: 0.52, height: 0.35, depth: 0.28}, scene);
+            torsoUpper.parent = spineMid; torsoUpper.position.y = 0.15; torsoUpper.material = materials.clothes;
+
+            // --- ARMS ---
+            const createArm = (side) => {
+                const shoulder = BABYLON.MeshBuilder.CreateSphere(side + "Shoulder", {diameter: 0.16}, scene);
+                shoulder.parent = spineTop;
+                shoulder.position.set(side === 'l' ? -0.3 : 0.3, 0.1, 0);
+                shoulder.material = materials.clothes;
+
+                const upperArm = BABYLON.MeshBuilder.CreateCapsule(side + "UpperArm", {radius: 0.07, height: 0.4}, scene);
+                upperArm.parent = shoulder;
+                upperArm.position.y = -0.15;
+                upperArm.rotation.z = side === 'l' ? 0.2 : -0.2;
+                upperArm.material = materials.skin;
+
+                const forearm = BABYLON.MeshBuilder.CreateCapsule(side + "Forearm", {radius: 0.06, height: 0.35}, scene);
+                forearm.parent = upperArm;
+                forearm.position.y = -0.3;
+                forearm.rotation.x = -Math.PI / 3; // Elbow bend for sitting
+                forearm.material = materials.skin;
+                return { shoulder, upperArm, forearm };
+            };
+            const arms = { l: createArm('l'), r: createArm('r') };
+
+            // --- NECK & HEAD ---
+            const neck = new BABYLON.TransformNode("neck", scene);
+            neck.parent = spineTop;
+            neck.position.y = 0.15;
+
+            const head = new BABYLON.TransformNode("head", scene);
+            head.parent = neck;
+            head.position.y = 0.15;
+
+            const headMesh = BABYLON.MeshBuilder.CreateSphere("headMesh", {diameterX: 0.24, diameterY: 0.3, diameterZ: 0.26}, scene);
+            headMesh.parent = head; headMesh.position.y = 0.12; headMesh.material = materials.skin;
+
+            const nose = BABYLON.MeshBuilder.CreateBox("nose", {width: 0.02, height: 0.04, depth: 0.1}, scene);
+            nose.parent = headMesh; nose.position.z = 0.13; nose.material = materials.skin;
+
+            nodes = { camera, spineLow, spineMid, neck, head, lShoulder: arms.l.shoulder, rShoulder: arms.r.shoulder };
             return scene;
         };
 
@@ -90,7 +162,7 @@
 
         // Networking
         const ws = new WebSocket(`ws://${window.location.host}/ws`);
-        let metrics = { head: 0, slump: 0, lean: 0 };
+        let metrics = { head: 0, slump: 0, lean: 0, status: 'POSTURE: GOOD' };
         let current = { head: 0, slump: 0, lean: 0 };
 
         ws.onmessage = (e) => {
@@ -104,34 +176,60 @@
                 metrics = data.metrics;
                 const s = document.getElementById('status');
                 s.innerText = metrics.status;
-                s.className = `stat ${metrics.status.includes('GOOD') ? 'good' : 'bad'}`;
+                const isBad = !metrics.status.includes('GOOD');
+                s.className = `stat ${isBad ? 'bad' : 'good'}`;
+                
+                // Visual Alert: Change skin color to warning red when posture is bad
+                materials.skin.emissiveColor = isBad ? new BABYLON.Color3(0.4, 0, 0) : new BABYLON.Color3(0.05, 0.15, 0.2);
+                materials.skin.diffuseColor = isBad ? new BABYLON.Color3(0.9, 0.2, 0.2) : new BABYLON.Color3(0.2, 0.6, 0.9);
             }
         };
 
         engine.runRenderLoop(() => {
             if (nodes.spineLow) {
-                current.head += (metrics.head - current.head) * 0.1;
-                current.slump += (metrics.slump - current.slump) * 0.1;
-                current.lean += (metrics.lean - current.lean) * 0.1;
+                const lerp = 0.15;
+                current.head += (metrics.head - current.head) * lerp;
+                current.slump += (metrics.slump - current.slump) * lerp;
+                current.lean += (metrics.lean - current.lean) * lerp;
 
                 const rad = Math.PI/180;
-                nodes.spineLow.rotation.x = current.slump * rad * 0.4;
-                nodes.spineMid.rotation.x = current.slump * rad * 0.6;
-                nodes.spineLow.rotation.z = current.lean * rad * 0.5;
-                nodes.spineMid.rotation.z = current.lean * rad * 0.5;
+                const isBad = !metrics.status.includes('GOOD');
                 
-                const round = Math.max(0, current.slump) * 0.005;
-                nodes.shL.position.z = round; 
-                nodes.shR.position.z = round;
-                nodes.neck.rotation.x = current.head * rad;
+                // DRAMATIC SLUMP: Distribute curvature and add FORWARD TRANSLATION
+                // Bad posture (hunching) involves the spine curving AND the head/neck moving forward
+                const slumpFactor = current.slump * rad;
+                nodes.spineLow.rotation.x = slumpFactor * 0.4;
+                nodes.spineMid.rotation.x = slumpFactor * 0.8;
+                
+                // Forward Translation (The "Text Neck" shift)
+                const forwardShift = Math.max(0, current.slump) * 0.008;
+                nodes.neck.position.z = forwardShift; 
+                nodes.neck.rotation.x = current.head * rad * 1.2; // Exaggerate head pitch
+
+                // DRAMATIC LEAN
+                nodes.spineLow.rotation.z = current.lean * rad * 0.5;
+                nodes.spineMid.rotation.z = current.lean * rad * 0.7;
+
+                // DRAMATIC ROUNDED SHOULDERS
+                const shoulderEffect = Math.max(0, current.slump);
+                const sForward = shoulderEffect * 0.012; // More dramatic shift
+                const sInward = shoulderEffect * 0.004;
+                
+                nodes.lShoulder.position.z = sForward;
+                nodes.lShoulder.position.x = -0.3 + sInward;
+                nodes.lShoulder.rotation.y = -shoulderEffect * rad * 0.6; // Roll shoulders in
+                
+                nodes.rShoulder.position.z = sForward;
+                nodes.rShoulder.position.x = 0.3 - sInward;
+                nodes.rShoulder.rotation.y = shoulderEffect * rad * 0.6;
             }
             scene.render();
         });
 
         function toggleCamera() {
             camIndex = (camIndex + 1) % 2;
-            if (camIndex === 0) nodes.camera.setPosition(new BABYLON.Vector3(2, 1, 3.5));
-            else nodes.camera.setPosition(new BABYLON.Vector3(3.5, 0.5, 0));
+            if (camIndex === 0) nodes.camera.setPosition(new BABYLON.Vector3(2.5, 1.5, 4.5));
+            else nodes.camera.setPosition(new BABYLON.Vector3(5, 0.8, 0));
         }
 
         function calibrate() { ws.send(JSON.stringify({command: 'calibrate'})); }
