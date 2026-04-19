@@ -52,8 +52,29 @@
         <div class="vid"><img src="/video_feed"></div>
 
         <div id="status" class="stat good">POSTURE: GOOD</div>
+
+        <!-- Posture Teaching Center -->
+        <div class="card" style="border: 1px solid #f59e0b; background: rgba(245, 158, 11, 0.05);">
+            <div style="font-weight: bold; font-size: 0.65rem; color: #f59e0b; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Posture Teaching Center</div>
+            <div style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                <button class="btn" style="background: #10b981; color: #000; padding: 8px;" onclick="teach('good')">SET AS GOOD (G)</button>
+                <button class="btn" style="background: #f59e0b; color: #000; padding: 8px;" onclick="teach('mid')">SET AS MID (M)</button>
+                <button class="btn" style="background: #ef4444; color: #000; padding: 8px;" onclick="teach('bad')">SET AS BAD (B)</button>
+            </div>
+            <div style="font-size: 0.65rem; color: #666; margin-top: 8px; text-align: center;">Perform the pose, then click to teach</div>
+        </div>
+
+        <div class="card" style="display: flex; justify-content: space-between; align-items: center; background: #111;">
+            <div style="text-align: left;">
+                <div style="font-weight: bold; font-size: 0.6rem; color: #888; text-transform: uppercase;">Classifier</div>
+                <div id="class-label" style="font-size: 1.2rem; font-weight: 900; color: #10b981;">GOOD</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-weight: bold; font-size: 0.6rem; color: #888; text-transform: uppercase;">Confidence</div>
+                <div id="conf-val" style="font-size: 1.2rem; font-weight: 900; font-family: monospace; color: #38bdf8;">100%</div>
+            </div>
+        </div>
         
-        <!-- Posture Score Gauge -->
         <div class="card" style="text-align: center; background: linear-gradient(135deg, #111, #1a1a1a);">
             <div style="font-weight: bold; font-size: 0.6rem; color: #888; text-transform: uppercase; margin-bottom: 5px;">Alignment Score</div>
             <div style="font-size: 2.2rem; font-weight: 900; color: #38bdf8; line-height: 1;">
@@ -76,7 +97,7 @@
             <canvas id="trendGraph" width="300" height="60" style="width: 100%; height: 60px;"></canvas>
         </div>
 
-        <button class="btn" onclick="calibrate()">CALIBRATE (C)</button>
+        <button class="btn" style="background: #444; color: #fff;" onclick="calibrate()">AUTO CALIBRATE (C)</button>
 
         <div class="card">
             <div style="font-weight:bold; font-size:0.6rem; color:#38bdf8; margin-bottom:8px;">LIMITS (DEG)</div>
@@ -100,16 +121,13 @@
         const createScene = function() {
             const scene = new BABYLON.Scene(engine);
             scene.clearColor = new BABYLON.Color4(0.02, 0.02, 0.02, 1);
-
             const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI/2, Math.PI/2.5, 4.5, new BABYLON.Vector3(0, 0.5, 0), scene);
             camera.attachControl(canvas, true);
-
             const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
             light.intensity = 0.6;
             const pLight = new BABYLON.PointLight("p", new BABYLON.Vector3(2, 2, 2), scene);
             pLight.intensity = 0.4;
 
-            // Materials
             materials.skin = new BABYLON.StandardMaterial("skin", scene);
             materials.skin.diffuseColor = new BABYLON.Color3(0.2, 0.6, 0.9);
             materials.skin.emissiveColor = new BABYLON.Color3(0.05, 0.15, 0.2);
@@ -118,83 +136,55 @@
             materials.chair = new BABYLON.StandardMaterial("chair", scene);
             materials.chair.diffuseColor = new BABYLON.Color3(0.08, 0.08, 0.08);
 
-            // Chair
             const seat = BABYLON.MeshBuilder.CreateBox("seat", {width:1.0, height:0.1, depth:1.0}, scene);
             seat.position.y = -0.35; seat.material = materials.chair;
             const back = BABYLON.MeshBuilder.CreateBox("back", {width:0.9, height:1.5, depth:0.12}, scene);
             back.position.set(0, 0.35, -0.5); back.material = materials.chair;
 
-            // Root
             const root = new BABYLON.TransformNode("root", scene);
             root.position.y = -0.15;
-
-            // Pelvis
             const pelvis = BABYLON.MeshBuilder.CreateCapsule("pelvis", {radius: 0.14, height: 0.5, orientation: BABYLON.Vector3.Right()}, scene);
             pelvis.parent = root;
             pelvis.material = materials.clothes;
 
-            // Legs
             const createLeg = (side) => {
                 const thigh = BABYLON.MeshBuilder.CreateCapsule(side + "Thigh", {radius: 0.1, height: 0.5}, scene);
-                thigh.parent = pelvis; 
-                thigh.position.set(side === 'l' ? -0.18 : 0.18, -0.05, 0.25); 
-                thigh.rotation.x = Math.PI / 2.2; 
-                thigh.material = materials.clothes;
+                thigh.parent = pelvis; thigh.position.set(side === 'l' ? -0.18 : 0.18, -0.05, 0.25); thigh.rotation.x = Math.PI / 2.2; thigh.material = materials.clothes;
                 const knee = new BABYLON.TransformNode(side + "Knee", scene);
-                knee.parent = thigh;
-                knee.position.y = 0.25;
-                knee.rotation.x = -Math.PI / 2.2;
+                knee.parent = thigh; knee.position.y = 0.25; knee.rotation.x = -Math.PI / 2.2;
                 const shin = BABYLON.MeshBuilder.CreateCapsule(side + "Shin", {radius: 0.08, height: 0.7}, scene);
-                shin.parent = knee;
-                shin.position.y = -0.35; 
-                shin.material = materials.skin;
+                shin.parent = knee; shin.position.y = -0.35; shin.material = materials.skin;
                 return { thigh, shin };
             };
             createLeg('l'); createLeg('r');
 
-            // Spine
             const spineLow = new BABYLON.TransformNode("spineLow", scene);
             spineLow.parent = root;
             const spineMid = new BABYLON.TransformNode("spineMid", scene);
-            spineMid.parent = spineLow;
-            spineMid.position.y = 0.25;
+            spineMid.parent = spineLow; spineMid.position.y = 0.25;
             const spineTop = new BABYLON.TransformNode("spineTop", scene);
-            spineTop.parent = spineMid;
-            spineTop.position.y = 0.25;
+            spineTop.parent = spineMid; spineTop.position.y = 0.25;
 
-            // Torso
             const tLow = BABYLON.MeshBuilder.CreateBox("tL", {width: 0.48, height: 0.3, depth: 0.25}, scene);
             tLow.parent = spineLow; tLow.position.y = 0.15; tLow.material = materials.clothes;
             const tUp = BABYLON.MeshBuilder.CreateBox("tU", {width: 0.52, height: 0.35, depth: 0.28}, scene);
             tUp.parent = spineMid; tUp.position.y = 0.15; tUp.material = materials.clothes;
 
-            // Arms
             const createArm = (side) => {
                 const sh = BABYLON.MeshBuilder.CreateSphere(side + "Sh", {diameter: 0.16}, scene);
-                sh.parent = spineTop;
-                sh.position.set(side === 'l' ? -0.3 : 0.3, 0.1, 0);
-                sh.material = materials.clothes;
+                sh.parent = spineTop; sh.position.set(side === 'l' ? -0.3 : 0.3, 0.1, 0); sh.material = materials.clothes;
                 const uArm = BABYLON.MeshBuilder.CreateCapsule(side + "UA", {radius: 0.07, height: 0.4}, scene);
-                uArm.parent = sh;
-                uArm.position.y = -0.15;
-                uArm.rotation.z = side === 'l' ? 0.2 : -0.2;
-                uArm.material = materials.skin;
+                uArm.parent = sh; uArm.position.y = -0.15; uArm.rotation.z = side === 'l' ? 0.2 : -0.2; uArm.material = materials.skin;
                 const fArm = BABYLON.MeshBuilder.CreateCapsule(side + "FA", {radius: 0.06, height: 0.35}, scene);
-                fArm.parent = uArm;
-                fArm.position.y = -0.3;
-                fArm.rotation.x = -Math.PI / 3;
-                fArm.material = materials.skin;
+                fArm.parent = uArm; fArm.position.y = -0.3; fArm.rotation.x = -Math.PI / 3; fArm.material = materials.skin;
                 return sh;
             };
             const lSh = createArm('l'); const rSh = createArm('r');
 
-            // Head
             const neck = new BABYLON.TransformNode("neck", scene);
-            neck.parent = spineTop;
-            neck.position.y = 0.15;
+            neck.parent = spineTop; neck.position.y = 0.15;
             const head = new BABYLON.TransformNode("head", scene);
-            head.parent = neck;
-            head.position.y = 0.15;
+            head.parent = neck; head.position.y = 0.15;
             const headM = BABYLON.MeshBuilder.CreateSphere("headM", {diameterX: 0.24, diameterY: 0.3, diameterZ: 0.26}, scene);
             headM.parent = head; headM.position.y = 0.12; headM.material = materials.skin;
             const nose = BABYLON.MeshBuilder.CreateBox("nose", {width: 0.02, height: 0.04, depth: 0.1}, scene);
@@ -206,9 +196,8 @@
 
         const scene = createScene();
 
-        // Networking
         const ws = new WebSocket(`ws://${window.location.host}/ws`);
-        let metrics = { head: 0, slump: 0, lean: 0, score: 100, status: 'CALIBRATING...' };
+        let metrics = { head: 0, slump: 0, lean: 0, score: 100, classification: 'GOOD', confidence: 100, status: 'CALIBRATING...' };
         let current = { head: 0, slump: 0, lean: 0 };
         let scoreHistory = Array(100).fill(100);
         const trendCanvas = document.getElementById('trendGraph');
@@ -235,6 +224,9 @@
             }
             if (data.metrics) {
                 metrics = data.metrics;
+                document.getElementById('class-label').innerText = metrics.classification;
+                document.getElementById('class-label').style.color = metrics.classification === 'GOOD' ? '#10b981' : (metrics.classification === 'MID' ? '#f59e0b' : '#ef4444');
+                document.getElementById('conf-val').innerText = Math.round(metrics.confidence) + '%';
                 document.getElementById('score-val').innerText = Math.round(metrics.score);
                 document.getElementById('score-bar').style.width = metrics.score + '%';
                 document.getElementById('score-bar').style.backgroundColor = metrics.score > 80 ? '#10b981' : (metrics.score > 50 ? '#f59e0b' : '#ef4444');
@@ -281,6 +273,7 @@
             else nodes.camera.setPosition(new BABYLON.Vector3(5, 0.8, 0));
         }
         function calibrate() { ws.send(JSON.stringify({command: 'calibrate'})); }
+        function teach(mode) { ws.send(JSON.stringify({command: 'teach_' + mode})); }
         function updateThresholds() {
             ws.send(JSON.stringify({
                 command: 'set_thresholds',
@@ -292,8 +285,12 @@
             }));
         }
         window.addEventListener('keydown', (e) => {
-            if (e.key.toLowerCase() === 'c') calibrate();
-            if (e.key.toLowerCase() === 'v') toggleCamera();
+            const k = e.key.toLowerCase();
+            if (k === 'c') calibrate();
+            if (k === 'g') teach('good');
+            if (k === 'm') teach('mid');
+            if (k === 'b') teach('bad');
+            if (k === 'v') toggleCamera();
             if (e.key === '+') ws.send(JSON.stringify({command: 'increase_sensitivity'}));
             if (e.key === '-') ws.send(JSON.stringify({command: 'decrease_sensitivity'}));
         });

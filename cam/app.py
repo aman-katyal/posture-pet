@@ -79,10 +79,16 @@ class Camera:
         self.latest_frame = None
         self.metrics = {"head": 0.0, "slump": 0.0, "lean": 0.0}
         self.baselines = {"head": 0.0, "slump": 0.0, "lean": 0.0}
-        self.thresholds = {"head": 6.0, "slump": 2.5, "lean": 2.0}
+        
+        # Teaching limits (Degrees of deviation from baseline)
+        self.mid_limits = {"head": 4.0, "slump": 2.5, "lean": 2.0}
+        self.bad_limits = {"head": 8.0, "slump": 5.0, "lean": 4.0}
+        self.thresholds = self.bad_limits.copy() 
 
         # Scoring & Calibration state
         self.posture_score = 100.0
+        self.classification = "GOOD"
+        self.confidence = 100.0
         self.is_auto_calibrating = True
         self.stability_buffer = [] # Store last 60 frames for stability check
 
@@ -168,13 +174,30 @@ class Camera:
 
                 t_head, t_slump, t_lean = self.thresholds["head"]/self.sensitivity, self.thresholds["slump"]/self.sensitivity, self.thresholds["lean"]/self.sensitivity
 
-                # Calculate 0-100 Score
-                score_head = max(0, 100 - (head_dev / t_head * 100))
-                score_slump = max(0, 100 - (slump_dev / t_slump * 100))
-                score_lean = max(0, 100 - (lean_dev / t_lean * 100))
-                self.posture_score = round((score_head + score_slump + score_lean) / 3, 1)
+                # --- CLASSIFICATION & SCORING (Enhanced Dual-Boundary Logic) ---
+                def get_norm_d(val, mid, bad):
+                    if val <= mid:
+                        return (val / mid) * 0.5 if mid > 0 else 0
+                    else:
+                        return 0.5 + ((val - mid) / (bad - mid)) * 0.5 if (bad - mid) > 0 else 0.5
 
-                is_violating = (head_dev > t_head or slump_dev > t_slump or lean_dev > t_lean)
+                d_h = get_norm_d(head_dev, self.mid_limits["head"], self.bad_limits["head"])
+                d_s = get_norm_d(slump_dev, self.mid_limits["slump"], self.bad_limits["slump"])
+                d_l = get_norm_d(lean_dev, self.mid_limits["lean"], self.bad_limits["lean"])
+                max_d = max(d_h, d_s, d_l)
+
+                if max_d < 0.45:
+                    self.classification, self.confidence = "GOOD", 100 * (1.0 - max_d)
+                elif max_d < 0.95:
+                    self.classification, self.confidence = "MID", 100 * (1.0 - abs(max_d - 0.7))
+                else:
+                    self.classification, self.confidence = "BAD", min(100.0, 80 + (max_d - 1.0) * 20)
+
+                self.confidence = round(max(50.0, self.confidence), 1)
+                self.posture_score = round(max(0, 100 - (max_d * 100)), 1)
+
+                is_violating = (max_d >= 1.0)
+
                 self.violation_history.append(is_violating)
                 if len(self.violation_history) > 10: self.violation_history.pop(0)
                 
@@ -220,6 +243,8 @@ class Camera:
             "slump": round(self.metrics["slump"] - self.baselines["slump"], 1),
             "lean": round(self.metrics["lean"] - self.baselines["lean"], 1),
             "score": self.posture_score,
+            "classification": self.classification,
+            "confidence": self.confidence,
             "status": self.status_msg
         }
 
@@ -256,12 +281,37 @@ async def websocket_endpoint(websocket: WebSocket):
                 data = await asyncio.wait_for(websocket.receive_text(), timeout=0.01)
                 msg = json.loads(data)
                 cmd = msg.get("command")
-                if cmd == "calibrate":
+                if cmd == "teach_good":
+                    camera.baselines = {"head": camera.metrics["head"], "slump": camera.metrics["slump"], "lean": camera.metrics["lean"]}
+                    camera.is_auto_calibrating = False
+                    camera.status_msg = "GOOD POSE SAVED"
+                elif cmd == "teach_mid":
+                    camera.mid_limits["head"] = max(1.0, abs(camera.metrics["head"] - camera.baselines["head"]))
+                    camera.mid_limits["slump"] = max(0.5, abs(camera.metrics["slump"] - camera.baselines["slump"]))
+                    camera.mid_limits["lean"] = max(0.5, abs(camera.metrics["lean"] - camera.baselines["lean"]))
+                    camera.status_msg = "MID POSE SAVED"
+                elif cmd == "teach_bad":
+                    camera.bad_limits["head"] = max(camera.mid_limits["head"] + 1.0, abs(camera.metrics["head"] - camera.baselines["head"]))
+                    camera.bad_limits["slump"] = max(camera.mid_limits["slump"] + 0.5, abs(camera.metrics["slump"] - camera.baselines["slump"]))
+                    camera.bad_limits["lean"] = max(camera.mid_limits["lean"] + 0.5, abs(camera.metrics["lean"] - camera.baselines["lean"]))
+                    camera.thresholds = camera.bad_limits.copy()
+                    camera.status_msg = "BAD POSE SAVED"
+                elif cmd == "calibrate":
                     camera.calibration_requested = True
                 elif cmd == "increase_sensitivity":
                     camera.sensitivity = round(min(5.0, camera.sensitivity + 0.1), 1)
                 elif cmd == "decrease_sensitivity":
                     camera.sensitivity = round(max(0.1, camera.sensitivity - 0.1), 1)
+                elif cmd == "capture_limit":
+                    # Calculate current deviation from baseline
+                    h_dev = abs(camera.metrics["head"] - camera.baselines["head"])
+                    s_dev = abs(camera.metrics["slump"] - camera.baselines["slump"])
+                    l_dev = abs(camera.metrics["lean"] - camera.baselines["lean"])
+                    
+                    # Set thresholds to current deviation (with a floor of 1.0 to avoid 0-thresholds)
+                    camera.thresholds["head"] = max(1.5, round(h_dev, 1))
+                    camera.thresholds["slump"] = max(1.0, round(s_dev, 1))
+                    camera.thresholds["lean"] = max(1.0, round(l_dev, 1))
                 elif cmd == "set_thresholds":
                     new_ts = msg.get("thresholds", {})
                     for k in ["head", "slump", "lean"]:
