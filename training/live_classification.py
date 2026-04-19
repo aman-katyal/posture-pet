@@ -6,7 +6,6 @@ from bleak import BleakClient, BleakScanner
 from scipy.stats import skew, kurtosis
 import time
 
-# --- CONFIGURATION ---
 ESP32_ADDRESS = "90:70:69:35:2C:E2"
 TARGET_CHAR_UUID = "33333333-2222-2222-1111-111100000000"
 MODEL_PATH = "models/advanced_posture_model.tflite"

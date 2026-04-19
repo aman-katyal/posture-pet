@@ -11,7 +11,6 @@ from fastapi.staticfiles import StaticFiles
 import uvicorn
 from typing import List
 
-# --- FILTERS & ENGINE ---
 class OneEuroFilter:
     def __init__(self, min_cutoff=1.0, beta=0.0):
         self.min_cutoff = min_cutoff
@@ -57,15 +56,12 @@ class PostureEngine:
         if r < -90: r += 180
         return {"p": self.filters[0](p), "y": self.filters[1](y), "r": self.filters[2](r)}
 
-# --- GLOBAL STATE ---
 app = FastAPI()
 engine = PostureEngine()
 mp_pose = mp.solutions.pose
-# Dedicated segmentation model for much higher accuracy
 mp_selfie = mp.solutions.selfie_segmentation
 segmenter = mp_selfie.SelfieSegmentation(model_selection=1) # 1 = Landscape mode (accurate)
 
-# Using model_complexity=2 for the heaviest/most accurate model
 pose = mp_pose.Pose(
     model_complexity=2, 
     smooth_landmarks=True, 
@@ -105,7 +101,6 @@ class Camera:
         self.sensitivity = 1.0
         self.running = True
 
-        # --- UDP SOCKET SETUP (Target: Uno Q) ---
         self.udp_ip = "10.10.11.84"
         self.udp_port = 9999
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -122,7 +117,6 @@ class Camera:
             
             rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             
-            # --- HIGH-ACCURACY ISOLATION ---
             seg_results = segmenter.process(rgb_frame)
             if seg_results.segmentation_mask is not None:
                 mask = seg_results.segmentation_mask
@@ -134,7 +128,6 @@ class Camera:
                 bg_image = np.zeros(frame.shape, dtype=np.uint8)
                 frame = np.where(condition, frame, bg_image)
                 
-                # CRITICAL: Re-sync the RGB frame for Pose detection so it ONLY sees the cutout
                 rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
             # Pose detector now only sees the isolated person against a black void
@@ -144,7 +137,6 @@ class Camera:
             if results.pose_landmarks and results.pose_world_landmarks:
                 wlm = results.pose_world_landmarks.landmark
                 
-                # --- METRIC ENGINE ---
                 mid_sh_z, mid_sh_y, mid_sh_x = (wlm[11].z + wlm[12].z)/2, (wlm[11].y + wlm[12].y)/2, (wlm[11].x + wlm[12].x)/2
                 mid_hip_z, mid_hip_y, mid_hip_x = (wlm[23].z + wlm[24].z)/2, (wlm[23].y + wlm[24].y)/2, (wlm[23].x + wlm[24].x)/2
                 nose = wlm[0]
@@ -158,7 +150,6 @@ class Camera:
                 self.metrics["slump"] = self.slump_filter(raw_slump)
                 self.metrics["lean"] = self.lean_filter(raw_lean)
 
-                # --- SMART AUTO-CALIBRATION ---
                 if self.is_auto_calibrating:
                     self.stability_buffer.append([self.metrics["head"], self.metrics["slump"], self.metrics["lean"]])
                     if len(self.stability_buffer) > 60: # ~2 seconds
@@ -174,14 +165,12 @@ class Camera:
                     self.calibration_requested = False
                     self.is_auto_calibrating = False
 
-                # --- SCORING & VIOLATION ---
                 head_dev = abs(self.metrics["head"] - self.baselines["head"])
                 slump_dev = max(0, self.metrics["slump"] - self.baselines["slump"])
                 lean_dev = abs(self.metrics["lean"] - self.baselines["lean"])
 
                 t_head, t_slump, t_lean = self.thresholds["head"]/self.sensitivity, self.thresholds["slump"]/self.sensitivity, self.thresholds["lean"]/self.sensitivity
 
-                # --- CLASSIFICATION & SCORING (Enhanced Dual-Boundary Logic) ---
                 def get_norm_d(val, mid, bad):
                     if val <= mid:
                         return (val / mid) * 0.5 if mid > 0 else 0
@@ -205,7 +194,6 @@ class Camera:
 
                 is_violating = (max_d >= 1.0)
 
-                # --- SEND CLASSIFICATION TO UNO Q VIA UDP ---
                 try:
                     payload = json.dumps({
                         "class": self.classification,
@@ -225,7 +213,6 @@ class Camera:
                     elif sum(self.violation_history) <= 3:
                         self.status_msg, self.status_color = "POSTURE: GOOD", (0, 255, 0)
 
-                # --- VISUAL OVERLAY ---
                 overlay = frame.copy()
                 cv2.rectangle(overlay, (0, 0), (320, 240), (20, 20, 20), -1)
                 cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
@@ -269,7 +256,6 @@ class Camera:
 import threading
 camera = Camera()
 
-# --- GENERATORS ---
 def gen_frames():
     while True:
         frame = camera.get_frame()
@@ -278,7 +264,6 @@ def gen_frames():
                    b'Content-Type: image/jpeg\r\n\r\n' + frame + b'\r\n')
         time.sleep(0.04) # ~25 FPS
 
-# --- ROUTES ---
 @app.get("/video_feed")
 async def video_feed():
     return StreamingResponse(gen_frames(), media_type="multipart/x-mixed-replace; boundary=frame")

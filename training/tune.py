@@ -5,7 +5,6 @@ import glob
 import json
 from sklearn.model_selection import train_test_split
 
-# --- CONFIGURATION ---
 os.environ["HSA_OVERRIDE_GFX_VERSION"] = "11.0.0"
 
 def load_data(data_dir, folder="training"):

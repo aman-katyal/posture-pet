@@ -6,14 +6,11 @@ import json
 from sklearn.model_selection import KFold
 from scipy.stats import skew, kurtosis
 
-# --- CONFIGURATION ---
 os.environ["HSA_OVERRIDE_GFX_VERSION"] = "11.0.0"
 
 def extract_advanced_features(values):
     """
     Simulates Edge Impulse 'Spectral Analysis' + 'Statistics' blocks.
-    Input: (window_size, 12)
-    Output: (N_features,)
     """
     features = []
     # For each of the 12 quaternion channels

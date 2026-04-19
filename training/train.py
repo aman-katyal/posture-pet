@@ -5,7 +5,6 @@ import glob
 import json
 from sklearn.model_selection import train_test_split
 
-# --- CONFIGURATION ---
 API_KEY = "ei_ae7962939fff88e0a205069eca7afe9e09793314bf00be79"
 os.environ["HSA_OVERRIDE_GFX_VERSION"] = "11.0.0"
 
@@ -43,7 +42,6 @@ def load_data(data_dir, folder="training"):
         basename = os.path.basename(f).split('.')[0]
         if basename not in label_map:
             # If it's testing data, the label might be different or not in name
-            # For this exercise, we assume the 'training' folder has labeled files
             continue
             
         with open(f, 'r') as j:
