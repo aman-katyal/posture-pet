@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Posture AI - 3D Human Twin Pro</title>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <style>
+        body { margin: 0; background: #050505; color: #fff; font-family: 'Inter', sans-serif; display: flex; height: 100vh; overflow: hidden; }
+        #renderCanvas { flex: 1; width: 100%; height: 100%; outline: none; }
+        #ui { 
+            width: 340px; 
+            background: #0f0f0f; 
+            border-left: 1px solid #333; 
+            padding: 15px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px; 
+            overflow-y: auto; 
+            max-height: 100vh;
+        }
+        .vid { 
+            width: 100%; 
+            border-radius: 10px; 
+            border: 1px solid #444; 
+            overflow: hidden; 
+            background: #000;
+            aspect-ratio: 4/3;
+            flex-shrink: 0;
+        }
+        .vid img { width: 100%; height: 100%; object-fit: cover; }
+        .stat { padding: 10px; border-radius: 8px; text-align: center; font-weight: 800; border: 1px solid #333; transition: all 0.3s; flex-shrink: 0; }
+        .good { color: #10b981; background: rgba(16, 185, 129, 0.1); border-color: #10b981; box-shadow: 0 0 10px rgba(16, 185, 129, 0.2); }
+        .bad { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-color: #ef4444; box-shadow: 0 0 15px rgba(239, 68, 68, 0.4); animation: pulse 1s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+        .btn { padding: 10px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: #38bdf8; color: #000; flex-shrink: 0; }
+        .btn-set { background: #10b981; color: #fff; }
+        input { background: #1a1a1a; border: 1px solid #444; color: #fff; padding: 4px; border-radius: 4px; width: 50px; text-align: center; }
+        .row { display: flex; justify-content: space-between; align-items: center; font-size: 0.75rem; color: #aaa; }
+        .card { 
+            background: #161616; 
+            padding: 12px; 
+            border-radius: 10px; 
+            border: 1px solid #222; 
+            flex-shrink: 0; 
+        }
+    </style>
+</head>
+<body>
+    <canvas id="renderCanvas"></canvas>
+    <div id="ui">
+        <!-- Camera Feed at the Top -->
+        <div class="vid"><img src="/video_feed"></div>
+
+        <div id="status" class="stat good">POSTURE: GOOD</div>
+
+        <!-- Posture Teaching Center -->
+        <div class="card" style="border: 1px solid #f59e0b; background: rgba(245, 158, 11, 0.05);">
+            <div style="font-weight: bold; font-size: 0.65rem; color: #f59e0b; margin-bottom: 10px; text-transform: uppercase; letter-spacing: 1px;">Posture Teaching Center</div>
+            <div style="display: grid; grid-template-columns: 1fr; gap: 8px;">
+                <button class="btn" style="background: #10b981; color: #000; padding: 8px;" onclick="teach('good')">SET AS GOOD (G)</button>
+                <button class="btn" style="background: #f59e0b; color: #000; padding: 8px;" onclick="teach('mid')">SET AS MID (M)</button>
+                <button class="btn" style="background: #ef4444; color: #000; padding: 8px;" onclick="teach('bad')">SET AS BAD (B)</button>
+            </div>
+            <div style="font-size: 0.65rem; color: #666; margin-top: 8px; text-align: center;">Perform the pose, then click to teach</div>
+        </div>
+
+        <div class="card" style="display: flex; justify-content: space-between; align-items: center; background: #111;">
+            <div style="text-align: left;">
+                <div style="font-weight: bold; font-size: 0.6rem; color: #888; text-transform: uppercase;">Classifier</div>
+                <div id="class-label" style="font-size: 1.2rem; font-weight: 900; color: #10b981;">GOOD</div>
+            </div>
+            <div style="text-align: right;">
+                <div style="font-weight: bold; font-size: 0.6rem; color: #888; text-transform: uppercase;">Confidence</div>
+                <div id="conf-val" style="font-size: 1.2rem; font-weight: 900; font-family: monospace; color: #38bdf8;">100%</div>
+            </div>
+        </div>
+        
+        <div class="card" style="text-align: center; background: linear-gradient(135deg, #111, #1a1a1a);">
+            <div style="font-weight: bold; font-size: 0.6rem; color: #888; text-transform: uppercase; margin-bottom: 5px;">Alignment Score</div>
+            <div style="font-size: 2.2rem; font-weight: 900; color: #38bdf8; line-height: 1;">
+                <span id="score-val">100</span><small style="font-size: 0.8rem;">%</small>
+            </div>
+            <div style="width: 100%; height: 6px; background: #222; border-radius: 3px; margin-top: 10px; overflow: hidden;">
+                <div id="score-bar" style="width: 100%; height: 100%; background: #38bdf8; transition: 0.3s;"></div>
+            </div>
+        </div>
+
+        <div class="card" style="background: rgba(56, 189, 248, 0.05);">
+            <div style="font-weight: bold; font-size: 0.6rem; color: #38bdf8; margin-bottom: 5px; text-transform: uppercase;">Telemetry</div>
+            <div class="row"><span>Head Pitch</span> <b id="val-head" style="color: #fff;">0.0°</b></div>
+            <div class="row"><span>Torso Slump</span> <b id="val-slump" style="color: #fff;">0.0°</b></div>
+            <div class="row"><span>Lateral Lean</span> <b id="val-lean" style="color: #fff;">0.0°</b></div>
+        </div>
+
+        <div class="card">
+            <div style="font-weight: bold; font-size: 0.6rem; color: #888; margin-bottom: 5px; text-transform: uppercase;">Stability Trend</div>
+            <canvas id="trendGraph" width="300" height="60" style="width: 100%; height: 60px;"></canvas>
+        </div>
+
+        <button class="btn" style="background: #444; color: #fff;" onclick="calibrate()">AUTO CALIBRATE (C)</button>
+
+        <div class="card">
+            <div style="font-weight:bold; font-size:0.6rem; color:#38bdf8; margin-bottom:8px;">LIMITS (DEG)</div>
+            <div class="row" style="margin-bottom: 4px;"><span>Head</span><input type="number" id="t-head" step="0.5"></div>
+            <div class="row" style="margin-bottom: 4px;"><span>Slump</span><input type="number" id="t-slump" step="0.5"></div>
+            <div class="row" style="margin-bottom: 4px;"><span>Lean</span><input type="number" id="t-lean" step="0.5"></div>
+            <button class="btn btn-set" onclick="updateThresholds()" style="margin-top:8px; padding: 6px;">SAVE</button>
+        </div>
+
+        <button class="btn" style="background:#333; color:#fff; padding: 6px;" onclick="toggleCamera()">VIEW (V)</button>
+        <div style="font-size:0.6rem; color:#444; text-align:center; padding-bottom: 10px;">+/- Sens • Scroll to zoom</div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById("renderCanvas");
+        const engine = new BABYLON.Engine(canvas, true);
+        let camIndex = 0;
+        let nodes = {};
+        let materials = {};
+
+        const createScene = function() {
+            const scene = new BABYLON.Scene(engine);
+            scene.clearColor = new BABYLON.Color4(0.02, 0.02, 0.02, 1);
+            const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI/2, Math.PI/2.5, 4.5, new BABYLON.Vector3(0, 0.5, 0), scene);
+            camera.attachControl(canvas, true);
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+            light.intensity = 0.6;
+            const pLight = new BABYLON.PointLight("p", new BABYLON.Vector3(2, 2, 2), scene);
+            pLight.intensity = 0.4;
+
+            materials.skin = new BABYLON.StandardMaterial("skin", scene);
+            materials.skin.diffuseColor = new BABYLON.Color3(0.2, 0.6, 0.9);
+            materials.skin.emissiveColor = new BABYLON.Color3(0.05, 0.15, 0.2);
+            materials.clothes = new BABYLON.StandardMaterial("clothes", scene);
+            materials.clothes.diffuseColor = new BABYLON.Color3(0.12, 0.12, 0.12);
+            materials.chair = new BABYLON.StandardMaterial("chair", scene);
+            materials.chair.diffuseColor = new BABYLON.Color3(0.08, 0.08, 0.08);
+
+            const seat = BABYLON.MeshBuilder.CreateBox("seat", {width:1.0, height:0.1, depth:1.0}, scene);
+            seat.position.y = -0.35; seat.material = materials.chair;
+            const back = BABYLON.MeshBuilder.CreateBox("back", {width:0.9, height:1.5, depth:0.12}, scene);
+            back.position.set(0, 0.35, -0.5); back.material = materials.chair;
+
+            const root = new BABYLON.TransformNode("root", scene);
+            root.position.y = -0.15;
+            const pelvis = BABYLON.MeshBuilder.CreateCapsule("pelvis", {radius: 0.14, height: 0.5, orientation: BABYLON.Vector3.Right()}, scene);
+            pelvis.parent = root;
+            pelvis.material = materials.clothes;
+
+            const createLeg = (side) => {
+                const thigh = BABYLON.MeshBuilder.CreateCapsule(side + "Thigh", {radius: 0.1, height: 0.5}, scene);
+                thigh.parent = pelvis; thigh.position.set(side === 'l' ? -0.18 : 0.18, -0.05, 0.25); thigh.rotation.x = Math.PI / 2.2; thigh.material = materials.clothes;
+                const knee = new BABYLON.TransformNode(side + "Knee", scene);
+                knee.parent = thigh; knee.position.y = 0.25; knee.rotation.x = -Math.PI / 2.2;
+                const shin = BABYLON.MeshBuilder.CreateCapsule(side + "Shin", {radius: 0.08, height: 0.7}, scene);
+                shin.parent = knee; shin.position.y = -0.35; shin.material = materials.skin;
+                return { thigh, shin };
+            };
+            createLeg('l'); createLeg('r');
+
+            const spineLow = new BABYLON.TransformNode("spineLow", scene);
+            spineLow.parent = root;
+            const spineMid = new BABYLON.TransformNode("spineMid", scene);
+            spineMid.parent = spineLow; spineMid.position.y = 0.25;
+            const spineTop = new BABYLON.TransformNode("spineTop", scene);
+            spineTop.parent = spineMid; spineTop.position.y = 0.25;
+
+            const tLow = BABYLON.MeshBuilder.CreateBox("tL", {width: 0.48, height: 0.3, depth: 0.25}, scene);
+            tLow.parent = spineLow; tLow.position.y = 0.15; tLow.material = materials.clothes;
+            const tUp = BABYLON.MeshBuilder.CreateBox("tU", {width: 0.52, height: 0.35, depth: 0.28}, scene);
+            tUp.parent = spineMid; tUp.position.y = 0.15; tUp.material = materials.clothes;
+
+            const createArm = (side) => {
+                const sh = BABYLON.MeshBuilder.CreateSphere(side + "Sh", {diameter: 0.16}, scene);
+                sh.parent = spineTop; sh.position.set(side === 'l' ? -0.3 : 0.3, 0.1, 0); sh.material = materials.clothes;
+                const uArm = BABYLON.MeshBuilder.CreateCapsule(side + "UA", {radius: 0.07, height: 0.4}, scene);
+                uArm.parent = sh; uArm.position.y = -0.15; uArm.rotation.z = side === 'l' ? 0.2 : -0.2; uArm.material = materials.skin;
+                const fArm = BABYLON.MeshBuilder.CreateCapsule(side + "FA", {radius: 0.06, height: 0.35}, scene);
+                fArm.parent = uArm; fArm.position.y = -0.3; fArm.rotation.x = -Math.PI / 3; fArm.material = materials.skin;
+                return sh;
+            };
+            const lSh = createArm('l'); const rSh = createArm('r');
+
+            const neck = new BABYLON.TransformNode("neck", scene);
+            neck.parent = spineTop; neck.position.y = 0.15;
+            const head = new BABYLON.TransformNode("head", scene);
+            head.parent = neck; head.position.y = 0.15;
+            const headM = BABYLON.MeshBuilder.CreateSphere("headM", {diameterX: 0.24, diameterY: 0.3, diameterZ: 0.26}, scene);
+            headM.parent = head; headM.position.y = 0.12; headM.material = materials.skin;
+            const nose = BABYLON.MeshBuilder.CreateBox("nose", {width: 0.02, height: 0.04, depth: 0.1}, scene);
+            nose.parent = headM; nose.position.z = 0.13; nose.material = materials.skin;
+
+            nodes = { camera, spineLow, spineMid, neck, head, lShoulder: lSh, rShoulder: rSh };
+            return scene;
+        };
+
+        const scene = createScene();
+
+        const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        let metrics = { head: 0, slump: 0, lean: 0, score: 100, classification: 'GOOD', confidence: 100, status: 'CALIBRATING...' };
+        let current = { head: 0, slump: 0, lean: 0 };
+        let scoreHistory = Array(100).fill(100);
+        const trendCanvas = document.getElementById('trendGraph');
+        const trendCtx = trendCanvas.getContext('2d');
+
+        function drawTrend() {
+            trendCtx.clearRect(0, 0, trendCanvas.width, trendCanvas.height);
+            trendCtx.beginPath(); trendCtx.strokeStyle = '#38bdf8'; trendCtx.lineWidth = 2;
+            const step = trendCanvas.width / 100;
+            for(let i=0; i<100; i++) {
+                const x = i * step;
+                const y = trendCanvas.height - (scoreHistory[i] / 100 * trendCanvas.height);
+                if(i===0) trendCtx.moveTo(x, y); else trendCtx.lineTo(x, y);
+            }
+            trendCtx.stroke();
+        }
+
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if (data.thresholds) {
+                document.getElementById('t-head').value = data.thresholds.head;
+                document.getElementById('t-slump').value = data.thresholds.slump;
+                document.getElementById('t-lean').value = data.thresholds.lean;
+            }
+            if (data.metrics) {
+                metrics = data.metrics;
+                document.getElementById('class-label').innerText = metrics.classification;
+                document.getElementById('class-label').style.color = metrics.classification === 'GOOD' ? '#10b981' : (metrics.classification === 'MID' ? '#f59e0b' : '#ef4444');
+                document.getElementById('conf-val').innerText = Math.round(metrics.confidence) + '%';
+                document.getElementById('score-val').innerText = Math.round(metrics.score);
+                document.getElementById('score-bar').style.width = metrics.score + '%';
+                document.getElementById('score-bar').style.backgroundColor = metrics.score > 80 ? '#10b981' : (metrics.score > 50 ? '#f59e0b' : '#ef4444');
+                scoreHistory.push(metrics.score); if(scoreHistory.length > 100) scoreHistory.shift(); drawTrend();
+                document.getElementById('val-head').innerText = metrics.head.toFixed(1) + '°';
+                document.getElementById('val-slump').innerText = metrics.slump.toFixed(1) + '°';
+                document.getElementById('val-lean').innerText = metrics.lean.toFixed(1) + '°';
+                const s = document.getElementById('status');
+                s.innerText = metrics.status;
+                const isBad = !metrics.status.includes('GOOD') && !metrics.status.includes('CALIB');
+                s.className = `stat ${metrics.status.includes('CALIB') ? '' : (isBad ? 'bad' : 'good')}`;
+                materials.skin.emissiveColor = isBad ? new BABYLON.Color3(0.4, 0, 0) : new BABYLON.Color3(0.05, 0.15, 0.2);
+                materials.skin.diffuseColor = isBad ? new BABYLON.Color3(0.9, 0.2, 0.2) : new BABYLON.Color3(0.2, 0.6, 0.9);
+            }
+        };
+
+        engine.runRenderLoop(() => {
+            if (nodes.spineLow) {
+                const lerp = 0.15;
+                current.head += (metrics.head - current.head) * lerp;
+                current.slump += (metrics.slump - current.slump) * lerp;
+                current.lean += (metrics.lean - current.lean) * lerp;
+                const rad = Math.PI/180;
+                nodes.spineLow.rotation.x = current.slump * rad * 0.4;
+                nodes.spineMid.rotation.x = current.slump * rad * 0.8;
+                const forwardS = Math.max(0, current.slump) * 0.008;
+                nodes.neck.position.z = forwardS; 
+                nodes.neck.rotation.x = current.head * rad * 1.2;
+                nodes.spineLow.rotation.z = current.lean * rad * 0.5;
+                nodes.spineMid.rotation.z = current.lean * rad * 0.7;
+                const sEff = Math.max(0, current.slump);
+                const sF = sEff * 0.012; const sI = sEff * 0.004;
+                nodes.lShoulder.position.z = sF; nodes.lShoulder.position.x = -0.3 + sI;
+                nodes.lShoulder.rotation.y = -sEff * rad * 0.6;
+                nodes.rShoulder.position.z = sF; nodes.rShoulder.position.x = 0.3 - sI;
+                nodes.rShoulder.rotation.y = sEff * rad * 0.6;
+            }
+            scene.render();
+        });
+
+        function toggleCamera() {
+            camIndex = (camIndex + 1) % 2;
+            if (camIndex === 0) nodes.camera.setPosition(new BABYLON.Vector3(2.5, 1.5, 4.5));
+            else nodes.camera.setPosition(new BABYLON.Vector3(5, 0.8, 0));
+        }
+        function calibrate() { ws.send(JSON.stringify({command: 'calibrate'})); }
+        function teach(mode) { ws.send(JSON.stringify({command: 'teach_' + mode})); }
+        function updateThresholds() {
+            ws.send(JSON.stringify({
+                command: 'set_thresholds',
+                thresholds: {
+                    head: parseFloat(document.getElementById('t-head').value),
+                    slump: parseFloat(document.getElementById('t-slump').value),
+                    lean: parseFloat(document.getElementById('t-lean').value)
+                }
+            }));
+        }
+        window.addEventListener('keydown', (e) => {
+            const k = e.key.toLowerCase();
+            if (k === 'c') calibrate();
+            if (k === 'g') teach('good');
+            if (k === 'm') teach('mid');
+            if (k === 'b') teach('bad');
+            if (k === 'v') toggleCamera();
+            if (e.key === '+' || e.key === '=') ws.send(JSON.stringify({command: 'increase_sensitivity'}));
+            if (e.key === '-' || e.key === '_') ws.send(JSON.stringify({command: 'decrease_sensitivity'}));
+        });
+        window.addEventListener("resize", () => engine.resize());
+    </script>
+</body>
+</html>
