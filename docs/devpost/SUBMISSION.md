@@ -6,7 +6,7 @@ The inspiration for this project came from a running joke in our group. One of o
 
 ## What it does
 
-Posture Pet is a hybrid hardware-AI system that monitors your body alignment and reflects your physical state through a robotic companion. The Pet is a three-block robot that uses two servo axes to physically mimic the user's slouching or leaning. It features an OLED display for eyes that change expressions based on how the user is sitting—becoming happy when you sit upright and showing distress when you slouch.
+Posture Pet is a hybrid hardware-AI system that monitors your body alignment and reflects your physical state through a robotic companion. The Pet is a three-block robot that uses two servo axes to physically mimic the user's slouching or leaning. It features an OLED display for eyes that change expressions based on how the user is sitting - becoming happy when you sit upright and showing distress when you slouch.
 
 The system uses a custom wearable array of three MPU-6500 IMU sensors placed at the base of the neck and on both shoulders. This data is transmitted via BLE to an Arduino Uno Q, where an AI model classifies the posture. Simultaneously, a PC-based vision model tracks the user and sends its own classification results to the Uno Q via UDP over WiFi. This allows the system to cross-verify the sensor data against a visual ground truth in real-time.
 
@@ -30,4 +30,4 @@ We learned a lot about the realities of working with bleeding-edge hardware. Whe
 
 ## What's next for Posture Pet
 
-We want to expand the Pet's health metrics beyond just physical posture. Our next step is to integrate an additional ESP32 node equipped with gas sensors to monitor indoor air quality. In this version, the Pet's survival wouldn't just depend on your back being straight, but also on the environment being healthy. If the CO2 levels get too high, the Pet would start to show distress, prompting the user to open a window—adding another layer to how the companion keeps its owner healthy.
+We want to expand the Pet's health metrics beyond just physical posture. Our next step is to integrate an additional ESP32 node equipped with gas sensors to monitor indoor air quality. In this version, the Pet's survival wouldn't just depend on your back being straight, but also on the environment being healthy. If the CO2 levels get too high, the Pet would start to show distress, prompting the user to open a window - adding another layer to how the companion keeps its owner healthy.

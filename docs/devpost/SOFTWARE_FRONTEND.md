@@ -6,7 +6,7 @@ The system includes a high-performance web dashboard developed with FastAPI. It 
 ### 1. 3D Visualization
 *   **Real-time Mapping**: The dashboard features a 3D model that reflects the user's spinal and shoulder orientation.
 *   **Hierarchical Animation**: We use quaternion data to rotate model nodes (Neck, Mid Spine, and Lower Spine), providing a clear visual representation of the user's posture.
-*   **Visual Feedback**: The model changes color based on the current posture state—turning green when aligned and red when a violation is detected.
+*   **Visual Feedback**: The model changes color based on the current posture state - turning green when aligned and red when a violation is detected.
 
 ### 2. Signal Filtering
 We implemented the One-Euro Filter to smooth data from both the IMU sensors and the webcam landmarks. This adaptive filter provides responsiveness during movement while maintaining stability when the user is still.
