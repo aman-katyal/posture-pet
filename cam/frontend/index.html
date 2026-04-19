@@ -17,13 +17,64 @@
         <img src="/video_feed" alt="Live Feed">
     </div>
     <div class="controls">
-        <button onclick="calibrate()">CALIBRATE BASELINE</button>
+        <button onclick="calibrate()">CALIBRATE BASELINE (C)</button>
+        
+        <div style="margin-top: 20px; background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; text-align: left;">
+            <div style="font-weight: bold; margin-bottom: 10px; color: #38bdf8;">THRESHOLDS (Deg)</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center;">
+                <label>Head:</label> <input type="number" id="t-head" step="0.5" style="width: 60px;">
+                <label>Slump:</label> <input type="number" id="t-slump" step="0.5" style="width: 60px;">
+                <label>Lean:</label> <input type="number" id="t-lean" step="0.5" style="width: 60px;">
+            </div>
+            <button onclick="updateThresholds()" style="margin-top: 15px; width: 100%; background: #10b981;">SET THRESHOLDS</button>
+        </div>
+
+        <div style="margin-top: 15px; font-size: 0.8rem; color: #94a3b8;">
+            Use <b>+</b> / <b>-</b> to adjust sensitivity
+        </div>
     </div>
     <script>
         const ws = new WebSocket(`ws://${window.location.host}/ws`);
+        const headIn = document.getElementById('t-head');
+        const slumpIn = document.getElementById('t-slump');
+        const leanIn = document.getElementById('t-lean');
+        
+        let initialized = false;
+
+        ws.onmessage = (e) => {
+            const data = JSON.parse(e.data);
+            if (!initialized && data.thresholds) {
+                headIn.value = data.thresholds.head;
+                slumpIn.value = data.thresholds.slump;
+                leanIn.value = data.thresholds.lean;
+                initialized = true;
+            }
+        };
+
         function calibrate() {
             ws.send(JSON.stringify({command: 'calibrate'}));
         }
+
+        function updateThresholds() {
+            ws.send(JSON.stringify({
+                command: 'set_thresholds',
+                thresholds: {
+                    head: parseFloat(headIn.value),
+                    slump: parseFloat(slumpIn.value),
+                    lean: parseFloat(leanIn.value)
+                }
+            }));
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.key === 'c' || e.key === 'C') {
+                calibrate();
+            } else if (e.key === '+' || e.key === '=') {
+                ws.send(JSON.stringify({command: 'increase_sensitivity'}));
+            } else if (e.key === '-' || e.key === '_') {
+                ws.send(JSON.stringify({command: 'decrease_sensitivity'}));
+            }
+        });
     </script>
 </body>
 </html>
