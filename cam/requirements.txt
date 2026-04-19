@@ -1,5 +1,6 @@
 mediapipe
 opencv-python
 numpy<2.0
-matplotlib
-scipy
+fastapi
+uvicorn
+websockets
