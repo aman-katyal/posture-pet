@@ -241,15 +241,16 @@ class Camera:
             self.latest_frame = buffer.tobytes()
             time.sleep(0.01)
 
-            _, buffer = cv2.imencode('.jpg', frame)
-            self.latest_frame = buffer.tobytes()
-            time.sleep(0.01)
-
     def get_frame(self):
         return self.latest_frame
 
     def get_data(self):
-        return self.latest_data
+        return {
+            "head": round(self.metrics["head"] - self.baselines["head"], 2),
+            "slump": round(self.metrics["slump"] - self.baselines["slump"], 2),
+            "lean": round(self.metrics["lean"] - self.baselines["lean"], 2),
+            "status": self.status_msg
+        }
 
 import threading
 camera = Camera()

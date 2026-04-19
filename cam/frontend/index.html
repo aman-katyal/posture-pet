@@ -2,79 +2,157 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Posture AI - Bare Stream</title>
+    <title>Posture AI - Stable Babylon 3D</title>
+    <!-- Use a specific stable version to avoid initCache errors -->
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <style>
-        body { margin: 0; background: #000; color: #fff; font-family: sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; overflow: hidden; }
-        .video-container { position: relative; border: 4px solid #333; border-radius: 8px; overflow: hidden; }
-        img { display: block; max-width: 100%; max-height: 80vh; }
-        .controls { margin-top: 20px; }
-        button { background: #38bdf8; border: none; padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; }
-        button:active { transform: scale(0.95); }
+        body { margin: 0; background: #050505; color: #fff; font-family: 'Inter', sans-serif; display: flex; height: 100vh; overflow: hidden; }
+        #renderCanvas { flex: 1; width: 100%; height: 100%; outline: none; }
+        #ui { width: 340px; background: #0f0f0f; border-left: 1px solid #333; padding: 20px; display: flex; flex-direction: column; gap: 15px; }
+        .vid { width: 100%; border-radius: 10px; border: 1px solid #444; overflow: hidden; }
+        .vid img { width: 100%; display: block; }
+        .stat { padding: 15px; border-radius: 8px; text-align: center; font-weight: 800; border: 1px solid #333; }
+        .good { color: #10b981; background: rgba(16, 185, 129, 0.1); border-color: #10b981; }
+        .bad { color: #ef4444; background: rgba(239, 68, 68, 0.1); border-color: #ef4444; }
+        .btn { padding: 12px; border-radius: 6px; border: none; font-weight: bold; cursor: pointer; background: #38bdf8; color: #000; }
+        .btn-set { background: #10b981; color: #fff; }
+        input { background: #1a1a1a; border: 1px solid #444; color: #fff; padding: 6px; border-radius: 4px; width: 60px; text-align: center; }
+        .row { display: flex; justify-content: space-between; align-items: center; font-size: 0.8rem; color: #aaa; }
     </style>
 </head>
 <body>
-    <div class="video-container">
-        <img src="/video_feed" alt="Live Feed">
-    </div>
-    <div class="controls">
-        <button onclick="calibrate()">CALIBRATE BASELINE (C)</button>
-        
-        <div style="margin-top: 20px; background: #111; padding: 15px; border-radius: 8px; border: 1px solid #333; text-align: left;">
-            <div style="font-weight: bold; margin-bottom: 10px; color: #38bdf8;">THRESHOLDS (Deg)</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: center;">
-                <label>Head:</label> <input type="number" id="t-head" step="0.5" style="width: 60px;">
-                <label>Slump:</label> <input type="number" id="t-slump" step="0.5" style="width: 60px;">
-                <label>Lean:</label> <input type="number" id="t-lean" step="0.5" style="width: 60px;">
-            </div>
-            <button onclick="updateThresholds()" style="margin-top: 15px; width: 100%; background: #10b981;">SET THRESHOLDS</button>
+    <canvas id="renderCanvas"></canvas>
+    <div id="ui">
+        <div id="status" class="stat good">POSTURE: GOOD</div>
+        <div class="vid"><img src="/video_feed"></div>
+        <button class="btn" onclick="calibrate()">CALIBRATE BASELINE (C)</button>
+        <div style="background:#1a1a1a; padding:15px; border-radius:8px; display:flex; flex-direction:column; gap:10px;">
+            <div style="font-weight:bold; font-size:0.7rem; color:#38bdf8; letter-spacing:1px;">LIMITS (DEG)</div>
+            <div class="row"><span>Head Tilt</span><input type="number" id="t-head"></div>
+            <div class="row"><span>Torso Slump</span><input type="number" id="t-slump"></div>
+            <div class="row"><span>Lateral Lean</span><input type="number" id="t-lean"></div>
+            <button class="btn btn-set" onclick="updateThresholds()">SAVE CONFIG</button>
         </div>
+        <button class="btn" style="background:#444; color:#fff;" onclick="toggleCamera()">SWITCH VIEW (V)</button>
+        <div style="font-size:0.7rem; color:#555; text-align:center;">Scroll to zoom • +/- for Sensitivity</div>
+    </div>
 
-        <div style="margin-top: 15px; font-size: 0.8rem; color: #94a3b8;">
-            Use <b>+</b> / <b>-</b> to adjust sensitivity
-        </div>
-    </div>
     <script>
+        const canvas = document.getElementById("renderCanvas");
+        const engine = new BABYLON.Engine(canvas, true);
+        let camIndex = 0;
+        let nodes = {};
+
+        const createScene = function() {
+            const scene = new BABYLON.Scene(engine);
+            scene.clearColor = new BABYLON.Color4(0.02, 0.02, 0.02, 1);
+
+            const camera = new BABYLON.ArcRotateCamera("camera", -Math.PI/2, Math.PI/2.5, 3.5, new BABYLON.Vector3(0, 0.4, 0), scene);
+            camera.attachControl(canvas, true);
+
+            const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), scene);
+            const pLight = new BABYLON.PointLight("p", new BABYLON.Vector3(2, 2, 2), scene);
+            pLight.intensity = 0.5;
+
+            // Materials
+            const glowMat = new BABYLON.StandardMaterial("m", scene);
+            glowMat.emissiveColor = new BABYLON.Color3(0.2, 0.7, 1);
+            const chairMat = new BABYLON.StandardMaterial("c", scene);
+            chairMat.diffuseColor = new BABYLON.Color3(0.1, 0.1, 0.1);
+
+            // Chair
+            const seat = BABYLON.MeshBuilder.CreateBox("s", {width:0.7, height:0.05, depth:0.7}, scene);
+            seat.position.y = -0.3; seat.material = chairMat;
+            const back = BABYLON.MeshBuilder.CreateBox("b", {width:0.7, height:1.0, depth:0.05}, scene);
+            back.position.set(0, 0.2, -0.35); back.material = chairMat;
+
+            // Skeleton Hierarchy
+            const root = new BABYLON.TransformNode("root", scene); root.position.y = -0.25;
+            const spineLow = new BABYLON.TransformNode("sl", scene); spineLow.parent = root;
+            const spineMid = new BABYLON.TransformNode("sm", scene); spineMid.parent = spineLow; spineMid.position.y = 0.25;
+            const spineTop = new BABYLON.TransformNode("st", scene); spineTop.parent = spineMid; spineTop.position.y = 0.25;
+            const neck = new BABYLON.TransformNode("n", scene); neck.parent = spineTop; neck.position.y = 0.15;
+            
+            // Visuals
+            const b1 = BABYLON.MeshBuilder.CreateSphere("b1", {diameter:0.15}, scene); b1.parent = spineLow; b1.material = glowMat;
+            const b2 = BABYLON.MeshBuilder.CreateSphere("b2", {diameter:0.12}, scene); b2.parent = spineMid; b2.material = glowMat;
+            const b3 = BABYLON.MeshBuilder.CreateSphere("b3", {diameter:0.12}, scene); b3.parent = spineTop; b3.material = glowMat;
+            const head = BABYLON.MeshBuilder.CreateSphere("h", {diameter:0.3}, scene); head.parent = neck; head.position.y = 0.15; head.material = glowMat;
+            
+            const shL = BABYLON.MeshBuilder.CreateSphere("shL", {diameter:0.1}, scene); shL.parent = spineTop; shL.position.x = -0.3; shL.material = glowMat;
+            const shR = BABYLON.MeshBuilder.CreateSphere("shR", {diameter:0.1}, scene); shR.parent = spineTop; shR.position.x = 0.3; shR.material = glowMat;
+
+            nodes = { camera, spineLow, spineMid, neck, shL, shR };
+            return scene;
+        };
+
+        const scene = createScene();
+
+        // Networking
         const ws = new WebSocket(`ws://${window.location.host}/ws`);
-        const headIn = document.getElementById('t-head');
-        const slumpIn = document.getElementById('t-slump');
-        const leanIn = document.getElementById('t-lean');
-        
-        let initialized = false;
+        let metrics = { head: 0, slump: 0, lean: 0 };
+        let current = { head: 0, slump: 0, lean: 0 };
 
         ws.onmessage = (e) => {
             const data = JSON.parse(e.data);
-            if (!initialized && data.thresholds) {
-                headIn.value = data.thresholds.head;
-                slumpIn.value = data.thresholds.slump;
-                leanIn.value = data.thresholds.lean;
-                initialized = true;
+            if (data.thresholds) {
+                document.getElementById('t-head').value = data.thresholds.head;
+                document.getElementById('t-slump').value = data.thresholds.slump;
+                document.getElementById('t-lean').value = data.thresholds.lean;
+            }
+            if (data.metrics) {
+                metrics = data.metrics;
+                const s = document.getElementById('status');
+                s.innerText = metrics.status;
+                s.className = `stat ${metrics.status.includes('GOOD') ? 'good' : 'bad'}`;
             }
         };
 
-        function calibrate() {
-            ws.send(JSON.stringify({command: 'calibrate'}));
+        engine.runRenderLoop(() => {
+            if (nodes.spineLow) {
+                current.head += (metrics.head - current.head) * 0.1;
+                current.slump += (metrics.slump - current.slump) * 0.1;
+                current.lean += (metrics.lean - current.lean) * 0.1;
+
+                const rad = Math.PI/180;
+                nodes.spineLow.rotation.x = current.slump * rad * 0.4;
+                nodes.spineMid.rotation.x = current.slump * rad * 0.6;
+                nodes.spineLow.rotation.z = current.lean * rad * 0.5;
+                nodes.spineMid.rotation.z = current.lean * rad * 0.5;
+                
+                const round = Math.max(0, current.slump) * 0.005;
+                nodes.shL.position.z = round; 
+                nodes.shR.position.z = round;
+                nodes.neck.rotation.x = current.head * rad;
+            }
+            scene.render();
+        });
+
+        function toggleCamera() {
+            camIndex = (camIndex + 1) % 2;
+            if (camIndex === 0) nodes.camera.setPosition(new BABYLON.Vector3(2, 1, 3.5));
+            else nodes.camera.setPosition(new BABYLON.Vector3(3.5, 0.5, 0));
         }
 
+        function calibrate() { ws.send(JSON.stringify({command: 'calibrate'})); }
         function updateThresholds() {
             ws.send(JSON.stringify({
                 command: 'set_thresholds',
                 thresholds: {
-                    head: parseFloat(headIn.value),
-                    slump: parseFloat(slumpIn.value),
-                    lean: parseFloat(leanIn.value)
+                    head: parseFloat(document.getElementById('t-head').value),
+                    slump: parseFloat(document.getElementById('t-slump').value),
+                    lean: parseFloat(document.getElementById('t-lean').value)
                 }
             }));
         }
 
         window.addEventListener('keydown', (e) => {
-            if (e.key === 'c' || e.key === 'C') {
-                calibrate();
-            } else if (e.key === '+' || e.key === '=') {
-                ws.send(JSON.stringify({command: 'increase_sensitivity'}));
-            } else if (e.key === '-' || e.key === '_') {
-                ws.send(JSON.stringify({command: 'decrease_sensitivity'}));
-            }
+            if (e.key.toLowerCase() === 'c') calibrate();
+            if (e.key.toLowerCase() === 'v') toggleCamera();
+            if (e.key === '+') ws.send(JSON.stringify({command: 'increase_sensitivity'}));
+            if (e.key === '-') ws.send(JSON.stringify({command: 'decrease_sensitivity'}));
         });
+        window.addEventListener("resize", () => engine.resize());
     </script>
 </body>
 </html>
