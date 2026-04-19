@@ -77,23 +77,23 @@ class Camera:
     def __init__(self):
         self.cap = cv2.VideoCapture(0)
         self.latest_frame = None
-        self.latest_data = {"pitch": 0.0, "yaw": 0.0, "roll": 0.0}
         self.metrics = {"head": 0.0, "slump": 0.0, "lean": 0.0}
         self.baselines = {"head": 0.0, "slump": 0.0, "lean": 0.0}
-        
-        # User-definable thresholds
         self.thresholds = {"head": 6.0, "slump": 2.5, "lean": 2.0}
-        
-        # Faster filters (min_cutoff=0.3 instead of 0.1) for better responsiveness
+
+        # Scoring & Calibration state
+        self.posture_score = 100.0
+        self.is_auto_calibrating = True
+        self.stability_buffer = [] # Store last 60 frames for stability check
+
         self.head_filter = OneEuroFilter(0.3, 0.01)
         self.slump_filter = OneEuroFilter(0.3, 0.01)
         self.lean_filter = OneEuroFilter(0.3, 0.01)
-        
-        # Reduced buffer (10 frames) for faster status transitions
+
         self.violation_history = []
-        self.status_msg = "POSTURE: GOOD"
-        self.status_color = (0, 255, 0)
-        
+        self.status_msg = "CALIBRATING..."
+        self.status_color = (255, 165, 0) # Orange
+
         self.calibration_requested = False
         self.sensitivity = 1.0
         self.running = True
@@ -129,113 +129,83 @@ class Camera:
             h, w, _ = frame.shape
 
             if results.pose_landmarks and results.pose_world_landmarks:
-                data = engine.solve(results.pose_landmarks.landmark, w, h)
                 wlm = results.pose_world_landmarks.landmark
                 
-                # --- UNIFIED 3D METRIC ENGINE ---
-                mid_sh_z = (wlm[11].z + wlm[12].z) / 2
-                mid_sh_y = (wlm[11].y + wlm[12].y) / 2
-                mid_sh_x = (wlm[11].x + wlm[12].x) / 2
-                
-                mid_hip_z = (wlm[23].z + wlm[24].z) / 2
-                mid_hip_y = (wlm[23].y + wlm[24].y) / 2
-                mid_hip_x = (wlm[23].x + wlm[24].x) / 2
-                
+                # --- METRIC ENGINE ---
+                mid_sh_z, mid_sh_y, mid_sh_x = (wlm[11].z + wlm[12].z)/2, (wlm[11].y + wlm[12].y)/2, (wlm[11].x + wlm[12].x)/2
+                mid_hip_z, mid_hip_y, mid_hip_x = (wlm[23].z + wlm[24].z)/2, (wlm[23].y + wlm[24].y)/2, (wlm[23].x + wlm[24].x)/2
                 nose = wlm[0]
 
-                # 1. HEAD (Nose-to-Shoulder Pitch)
-                head_dz = mid_sh_z - nose.z
-                head_dy = mid_sh_y - nose.y
-                raw_head = np.degrees(np.arctan2(head_dz, head_dy))
-                
-                # 2. SLUMP (Shoulder-to-Hip Pitch)
-                slump_dz = mid_hip_z - mid_sh_z
-                slump_dy = mid_hip_y - mid_sh_y
-                raw_slump = np.degrees(np.arctan2(slump_dz, slump_dy))
-                
-                # 3. LEAN (Torso Lateral tilt)
-                # Sensitive Lean: Pure shoulder line roll + torso shift
-                shoulder_dx = wlm[12].x - wlm[11].x
-                shoulder_dy = wlm[12].y - wlm[11].y
-                shoulder_roll = np.degrees(np.arctan2(shoulder_dy, shoulder_dx))
-                torso_tilt = np.degrees(np.arctan2(mid_sh_x - mid_hip_x, abs(mid_hip_y - mid_sh_y)))
-                raw_lean = (shoulder_roll * 0.6) + (torso_tilt * 0.4)
+                raw_head = np.degrees(np.arctan2(mid_sh_z - nose.z, mid_sh_y - nose.y))
+                raw_slump = np.degrees(np.arctan2(mid_hip_z - mid_sh_z, mid_hip_y - mid_sh_y))
+                raw_lean = (np.degrees(np.arctan2(wlm[12].y - wlm[11].y, wlm[12].x - wlm[11].x)) * 0.6) + \
+                           (np.degrees(np.arctan2(mid_sh_x - mid_hip_x, abs(mid_hip_y - mid_sh_y))) * 0.4)
 
-                # Apply Filtering
-                smoothed_head = self.head_filter(raw_head)
-                smoothed_slump = self.slump_filter(raw_slump)
-                smoothed_lean = self.lean_filter(raw_lean)
+                self.metrics["head"] = self.head_filter(raw_head)
+                self.metrics["slump"] = self.slump_filter(raw_slump)
+                self.metrics["lean"] = self.lean_filter(raw_lean)
 
+                # --- SMART AUTO-CALIBRATION ---
+                if self.is_auto_calibrating:
+                    self.stability_buffer.append([self.metrics["head"], self.metrics["slump"], self.metrics["lean"]])
+                    if len(self.stability_buffer) > 60: # ~2 seconds
+                        self.stability_buffer.pop(0)
+                        vars_s = np.var(self.stability_buffer, axis=0)
+                        if np.all(vars_s < 0.2): # Very stable
+                            self.baselines["head"], self.baselines["slump"], self.baselines["lean"] = np.mean(self.stability_buffer, axis=0)
+                            self.is_auto_calibrating = False
+                            self.status_msg = "POSTURE: GOOD"
+                
                 if self.calibration_requested:
-                    if data:
-                        engine.baselines = data
-                        self.baselines["head"] = smoothed_head
-                        self.baselines["slump"] = smoothed_slump
-                        self.baselines["lean"] = smoothed_lean
-                        self.calibration_requested = False
+                    self.baselines["head"], self.baselines["slump"], self.baselines["lean"] = self.metrics["head"], self.metrics["slump"], self.metrics["lean"]
+                    self.calibration_requested = False
+                    self.is_auto_calibrating = False
 
-                if data:
-                    self.metrics["head"] = smoothed_head
-                    self.metrics["slump"] = smoothed_slump
-                    self.metrics["lean"] = smoothed_lean
+                # --- SCORING & VIOLATION ---
+                head_dev = abs(self.metrics["head"] - self.baselines["head"])
+                slump_dev = max(0, self.metrics["slump"] - self.baselines["slump"])
+                lean_dev = abs(self.metrics["lean"] - self.baselines["lean"])
 
-                    # --- VIOLATION LOGIC ---
-                    head_dev = self.metrics["head"] - self.baselines["head"]
-                    slump_dev = self.metrics["slump"] - self.baselines["slump"]
-                    lean_dev = self.metrics["lean"] - self.baselines["lean"]
+                t_head, t_slump, t_lean = self.thresholds["head"]/self.sensitivity, self.thresholds["slump"]/self.sensitivity, self.thresholds["lean"]/self.sensitivity
 
-                    # Use user-defined thresholds (with sensitivity)
-                    t_head = self.thresholds["head"] / self.sensitivity
-                    t_slump = self.thresholds["slump"] / self.sensitivity
-                    t_lean = self.thresholds["lean"] / self.sensitivity
+                # Calculate 0-100 Score
+                score_head = max(0, 100 - (head_dev / t_head * 100))
+                score_slump = max(0, 100 - (slump_dev / t_slump * 100))
+                score_lean = max(0, 100 - (lean_dev / t_lean * 100))
+                self.posture_score = round((score_head + score_slump + score_lean) / 3, 1)
 
-                    is_violating = (abs(head_dev) > t_head or 
-                                    slump_dev > t_slump or 
-                                    abs(lean_dev) > t_lean)
+                is_violating = (head_dev > t_head or slump_dev > t_slump or lean_dev > t_lean)
+                self.violation_history.append(is_violating)
+                if len(self.violation_history) > 10: self.violation_history.pop(0)
+                
+                if not self.is_auto_calibrating:
+                    if sum(self.violation_history) >= 7:
+                        self.status_msg, self.status_color = "POSTURE: VIOLATED", (0, 0, 255)
+                    elif sum(self.violation_history) <= 3:
+                        self.status_msg, self.status_color = "POSTURE: GOOD", (0, 255, 0)
 
-                    # Faster status transition (10 frames ~0.3s)
-                    self.violation_history.append(is_violating)
-                    if len(self.violation_history) > 10:
-                        self.violation_history.pop(0)
-                    
-                    if sum(self.violation_history) >= (len(self.violation_history) * 0.7):
-                        self.status_msg = "POSTURE: VIOLATED"
-                        self.status_color = (0, 0, 255)
-                    elif sum(self.violation_history) <= (len(self.violation_history) * 0.3):
-                        self.status_msg = "POSTURE: GOOD"
-                        self.status_color = (0, 255, 0)
+                # --- VISUAL OVERLAY ---
+                overlay = frame.copy()
+                cv2.rectangle(overlay, (0, 0), (320, 240), (20, 20, 20), -1)
+                cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
 
-                    # --- VISUAL OVERLAY ---
-                    overlay = frame.copy()
-                    cv2.rectangle(overlay, (0, 0), (320, 230), (20, 20, 20), -1)
-                    cv2.addWeighted(overlay, 0.7, frame, 0.3, 0, frame)
+                def draw_bar(y, label, val, t, color):
+                    cv2.putText(frame, label, (15, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+                    cv2.rectangle(frame, (70, y-10), (280, y), (40, 40, 40), -1)
+                    w_b = int(min(val/t, 1.0) * 210) if t > 0 else 0
+                    cv2.rectangle(frame, (70, y-10), (70+w_b, y), color, -1)
 
-                    def draw_bar(y, label, value, max_val, current_color):
-                        cv2.putText(frame, label, (15, y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 255), 1)
-                        cv2.rectangle(frame, (80, y - 12), (300, y + 2), (50, 50, 50), -1)
-                        width = int(min(abs(value) / max_val, 1.0) * 220)
-                        cv2.rectangle(frame, (80, y - 12), (80 + width, y + 2), current_color, -1)
-                        cv2.putText(frame, f"{abs(value):.1f}", (305, y), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
+                draw_bar(40, "HEAD", head_dev, t_head*2, (0, 255, 0) if head_dev < t_head else (0, 0, 255))
+                draw_bar(70, "SLUMP", slump_dev, t_slump*2, (0, 255, 0) if slump_dev < t_slump else (0, 0, 255))
+                draw_bar(100, "LEAN", lean_dev, t_lean*2, (0, 255, 0) if lean_dev < t_lean else (0, 0, 255))
 
-                    draw_bar(40,  "HEAD",  head_dev,  12/self.sensitivity, (0, 0, 255) if abs(head_dev) > t_head else (0, 255, 0))
-                    draw_bar(80,  "SLUMP", slump_dev, 10/self.sensitivity, (0, 0, 255) if slump_dev > t_slump else (0, 255, 0))
-                    draw_bar(120, "LEAN",  lean_dev,  8/self.sensitivity, (0, 0, 255) if abs(lean_dev) > t_lean else (0, 255, 0))
-
-                    cv2.putText(frame, self.status_msg, (15, 170), cv2.FONT_HERSHEY_SIMPLEX, 0.7, self.status_color, 2)
-                    cv2.putText(frame, f"SENSITIVITY: {self.sensitivity:.1f}x (+/-)", (15, 195), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (200, 200, 200), 1)
-                    cv2.putText(frame, "C: CALIBRATE BASELINE", (15, 215), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (150, 150, 150), 1)
-                    
-                    mp.solutions.drawing_utils.draw_landmarks(
-                        frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
-                        mp.solutions.drawing_utils.DrawingSpec(color=(255, 255, 255), thickness=1, circle_radius=1),
-                        mp.solutions.drawing_utils.DrawingSpec(color=self.status_color, thickness=2, circle_radius=1)
-                    )
-
-            _, buffer = cv2.imencode('.jpg', frame)
-            self.latest_frame = buffer.tobytes()
-            time.sleep(0.01)
-
-
+                cv2.putText(frame, f"SCORE: {self.posture_score}%", (15, 140), cv2.FONT_HERSHEY_SIMPLEX, 0.8, self.status_color, 2)
+                cv2.putText(frame, self.status_msg, (15, 175), cv2.FONT_HERSHEY_SIMPLEX, 0.6, self.status_color, 2)
+                cv2.putText(frame, "C: CALIBRATE • +/-: SENSITIVITY", (15, 210), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (120, 120, 120), 1)
+                
+                mp.solutions.drawing_utils.draw_landmarks(frame, results.pose_landmarks, mp_pose.POSE_CONNECTIONS,
+                    mp.solutions.drawing_utils.DrawingSpec(color=(255,255,255), thickness=1, circle_radius=1),
+                    mp.solutions.drawing_utils.DrawingSpec(color=self.status_color, thickness=2, circle_radius=1))
 
             _, buffer = cv2.imencode('.jpg', frame)
             self.latest_frame = buffer.tobytes()
@@ -246,9 +216,10 @@ class Camera:
 
     def get_data(self):
         return {
-            "head": round(self.metrics["head"] - self.baselines["head"], 2),
-            "slump": round(self.metrics["slump"] - self.baselines["slump"], 2),
-            "lean": round(self.metrics["lean"] - self.baselines["lean"], 2),
+            "head": round(self.metrics["head"] - self.baselines["head"], 1),
+            "slump": round(self.metrics["slump"] - self.baselines["slump"], 1),
+            "lean": round(self.metrics["lean"] - self.baselines["lean"], 1),
+            "score": self.posture_score,
             "status": self.status_msg
         }
 
