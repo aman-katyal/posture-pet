@@ -21,9 +21,9 @@ private:
     IMUManager() : mpuNeck(i2c1), mpuL(i2c0), mpuR(i2c0) {}
     
     // MPU Instances
-    MPU_t mpuNeck; // Bus 1
-    MPU_t mpuL;    // Bus 0, Addr 0x68
-    MPU_t mpuR;    // Bus 0, Addr 0x69
+    MPU_t mpuNeck;    // Bus 1, Addr 0x69 (Swapped)
+    MPU_t mpuL;       // Bus 0, Addr 0x68
+    MPU_t mpuR;       // Bus 0, Addr 0x69
     
     MahonyFilter qStates[NUM_SENSORS];
     Bias gyroBias[NUM_SENSORS];

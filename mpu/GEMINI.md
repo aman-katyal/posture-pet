@@ -9,29 +9,30 @@
 ## Modular Structure
 - **`main/main.cpp`**: Application entry and task orchestration.
 - **`main/ble_server.cpp`**: NimBLE peripheral implementation and orientation notifications.
-- **`main/imu_manager.cpp`**: I2C management and sensor fusion (Madgwick filter).
+- **`main/imu_manager.cpp`**: I2C management and sensor fusion (Mahony filter).
 - **`components/mpu_driver`**: Patched stable driver for MPU sensors.
-- **`components/mpu_fusion`**: Madgwick filter and quaternion math.
+- **`components/mpu_fusion`**: Mahony filter and quaternion math.
 
 ## Hardware Configuration
-- **I2C Bus**: Port 0
-- **SCL Pin**: GPIO 18
-- **SDA Pin**: GPIO 17
-- **I2C Address**: 0x68
-- **DLPF**: 42Hz enabled for vibration stability.
+- **I2C Bus 0**: SCL=18, SDA=17
+  - 0x68: Left Shoulder
+  - 0x69: Right Shoulder
+- **I2C Bus 1**: SCL=4, SDA=5
+  - 0x68: Neck
+  - 0x69: Lower Back
 
 ## BLE Configuration
 - **Device Name**: `ESP32S3_PERSON`
 - **Service UUID**: `59462f12-9543-9999-12c8-58b459a2712d`
 - **Characteristic UUID**: `33333333-2222-2222-1111-111100000000`
-- **Packet Format (12 Bytes)**:
-  - `[0-3]` : Roll (float32)
-  - `[4-7]` : Pitch (float32)
-  - `[8-11]`: Yaw (float32)
+- **Packet Format (64 Bytes Total)**:
+  - 4 Sensors × 16 Bytes each (Quaternions)
+  - Each sensor: `[0-3]` qw, `[4-7]` qx, `[8-11]` qy, `[12-15]` qz (float32)
+  - Order: Neck, L Shoulder, R Shoulder, Lower Back
   - *Note: Little-endian byte order.*
 
 ## Key References & Conventions
-- **Calibration**: 200-sample static calibration runs on boot. Keep device still.
+- **Calibration**: 50-sample static calibration runs on boot. Keep device still.
 - **Drift**: Yaw will drift over time as no magnetometer grounding is implemented in the current fusion loop.
 - **Build**: Use `idf.py build` and flash over `COM7` (typical).
 

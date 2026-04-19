@@ -11,7 +11,7 @@ struct Orientation {
 };
 
 struct MultiOrientation {
-    Orientation sensors[3];
+    Orientation sensors[4];
 };
 
 class BLEServer {

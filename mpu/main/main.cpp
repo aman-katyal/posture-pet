@@ -17,14 +17,12 @@ extern "C" void app_main(void) {
     }
     ESP_ERROR_CHECK(ret);
 
-    // Set static MAC address (optional, but ensures it stays the same across reboots/devices)
-    // Note: This must be called before initializing any network interfaces.
     uint8_t static_mac[6] = {0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01}; 
     esp_base_mac_addr_set(static_mac);
     
     uint8_t derived_mac[6];
     esp_read_mac(derived_mac, ESP_MAC_BT);
-    ESP_LOGI("APP", "Static MAC set. Current BLE MAC: %02X:%02X:%02X:%02X:%02X:%02X",
+    ESP_LOGI("APP", "Static MAC: %02X:%02X:%02X:%02X:%02X:%02X",
              derived_mac[0], derived_mac[1], derived_mac[2],
              derived_mac[3], derived_mac[4], derived_mac[5]);
 
@@ -47,13 +45,21 @@ extern "C" void app_main(void) {
                 ble.notifyMultiOrientation(mo);
             }
             
-            // Minimal diagnostic log
+            // Dashboard style log for 3 sensors
             static int count = 0;
-            if (count++ % 100 == 0) {
-                ESP_LOGI("APP", "Posture Update [N, L, R] | Neck QW: %.3f | L Shoulder QW: %.3f | R Shoulder QW: %.3f", 
-                         mo.sensors[SENSOR_NECK].qw,
-                         mo.sensors[SENSOR_SHOULDER_L].qw,
-                         mo.sensors[SENSOR_SHOULDER_R].qw);
+            if (count++ % 20 == 0) { // Log every 1 second
+                char nStr[10], lStr[10], rStr[10];
+                
+                auto fmt = [](char* s, const Orientation& o) {
+                    if (o.qw == 1.0f && o.qx == 0 && o.qy == 0) sprintf(s, "[OFF]");
+                    else sprintf(s, "%.3f", o.qw);
+                };
+
+                fmt(nStr, mo.sensors[SENSOR_NECK]);
+                fmt(lStr, mo.sensors[SENSOR_SHOULDER_L]);
+                fmt(rStr, mo.sensors[SENSOR_SHOULDER_R]);
+
+                ESP_LOGI("DASH", "Neck:%s | L:%s | R:%s", nStr, lStr, rStr);
             }
             vTaskDelayUntil(&xLastWakeTime, xFrequency);
         }
