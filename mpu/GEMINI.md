@@ -2,7 +2,7 @@
 
 ## Project Architecture & Stack
 - **Hardware**: ESP32-S3
-- **Sensor**: MPU-9250 (compatible with MPU-6050 driver for basic IMU data)
+- **Sensor**: MPU-6500 (High-performance 6-axis IMU)
 - **Communication**: BLE via NimBLE stack
 - **Language/Framework**: C++ (Modular OOP structure), ESP-IDF v6.0
 
@@ -19,16 +19,15 @@
   - 0x69: Right Shoulder
 - **I2C Bus 1**: SCL=4, SDA=5
   - 0x68: Neck
-  - 0x69: Lower Back
 
 ## BLE Configuration
 - **Device Name**: `ESP32S3_PERSON`
 - **Service UUID**: `59462f12-9543-9999-12c8-58b459a2712d`
 - **Characteristic UUID**: `33333333-2222-2222-1111-111100000000`
-- **Packet Format (64 Bytes Total)**:
-  - 4 Sensors × 16 Bytes each (Quaternions)
+- **Packet Format (48 Bytes Total)**:
+  - 3 Sensors × 16 Bytes each (Quaternions)
   - Each sensor: `[0-3]` qw, `[4-7]` qx, `[8-11]` qy, `[12-15]` qz (float32)
-  - Order: Neck, L Shoulder, R Shoulder, Lower Back
+  - Order: Neck, L Shoulder, R Shoulder
   - *Note: Little-endian byte order.*
 
 ## Key References & Conventions

@@ -11,7 +11,11 @@ We built a custom **Dense Neural Network (MLP)** designed specifically for edge 
 Rather than feeding raw data, we implemented a sophisticated real-time signal processing engine:
 1.  **Temporal Statistics**: Mean, StdDev, Min, and Max over a 200-sample window.
 2.  **Spectral Energy (FFT)**: We compute the spectral power of each axis. This allows the AI to distinguish between "static good posture" and the "trembling jitter" of muscles reaching the point of failure.
-3.  **Relative Quaternions**: By computing orientations relative to the Neck MPU, the model is immune to the user's absolute facing direction in the room.
+3.  **Relative Quaternions**: By computing orientations relative to the Neck MPU (using the Mahony fusion output), the model is immune to the user's absolute facing direction in the room.
+
+## 🛠️ Calibration & Cross-Verification
+*   **Dual-Brain Validation**: The system simultaneously processes IMU data on the Uno Q and CV data on the PC. 
+*   **Cross-Check**: If the IMU-based AI predicts "Good" but the CV model detects a "Slump," the system flags a discrepancy and prioritizes the CV "Ground Truth" for real-time correction.
 
 ## 🛠 Training Pipeline
 *   **Hardware**: Trained locally on an **AMD Ryzen 9 7940HS** using **ROCm (Radeon Open Compute)** acceleration.

@@ -7,10 +7,9 @@ This document serves as a persistent log of the **Person** project configuration
 ### ESP32-S3 Pinout
 | Component | Bus/Interface | Pins (SCL/SDA) | I2C Address | Notes |
 |-----------|---------------|----------------|-------------|-------|
-| Neck MPU | I2C Bus 1 | 47 / 48 | 0x68 | Port 1 |
-| Lower Back| I2C Bus 1 | 47 / 48 | 0x69 | Port 1 (AD0 High) |
-| Shoulder L| I2C Bus 0 | 1 / 2 | 0x68 | Port 0 |
-| Shoulder R| I2C Bus 0 | 1 / 2 | 0x69 | Port 0 (AD0 High) |
+| Neck MPU | I2C Bus 1 | 4 / 5 | 0x68 | Port 1 |
+| Shoulder L| I2C Bus 0 | 18 / 17 | 0x68 | Port 0 |
+| Shoulder R| I2C Bus 0 | 18 / 17 | 0x69 | Port 0 (AD0 High) |
 
 ### Communication
 - **BLE Device Name:** `ESP32S3_PERSON`
@@ -20,7 +19,7 @@ This document serves as a persistent log of the **Person** project configuration
 ## 2. System Rates & Timing
 
 ### Operating Frequencies
-- **I2C Clock:** 100 kHz (Standard Mode - Reduced from 400kHz for bus stability)
+- **I2C Clock:** 400 kHz (Fast Mode)
 - **BLE Update Rate:** 20 Hz (50ms interval)
 - **BLE Advertising Interval:** 100 ms (Faster discovery)
 - **IMU Internal Sampling:** 100 Hz
@@ -30,11 +29,11 @@ This document serves as a persistent log of the **Person** project configuration
 1. **NVS Init:** Loads non-volatile storage.
 2. **MAC Config:** Sets static BLE MAC address and prints to console.
 3. **I2C Init:** Initializes Bus 0 and Bus 1.
-4. **Static Calibration (2s):** Samples all active sensors for 1 second (50 samples) while the device is still to neutralize gyroscope bias.
+4. **Static Calibration (1s):** Samples all active sensors for 1 second (50 samples) while the device is still to neutralize gyroscope bias.
 5. **BLE Start:** Begins advertising.
 
 ### BLE Packet Structure
-The orientation data is sent as a **64-byte payload** (4 sensors × 16 bytes each) containing only quaternions in **Little-Endian** format.
+The orientation data is sent as a **48-byte payload** (3 sensors × 16 bytes each) containing only quaternions in **Little-Endian** format.
 
 #### Orientation Data (Per Sensor - 16 Bytes)
 | Bytes | Data Type | Field | Description |
@@ -44,11 +43,10 @@ The orientation data is sent as a **64-byte payload** (4 sensors × 16 bytes eac
 | **8 - 11**| `float32` | **qy** | Quaternion Y |
 | **12 - 15**| `float32` | **qz** | Quaternion Z |
 
-#### Multi-Sensor Layout (64 Bytes Total)
+#### Multi-Sensor Layout (48 Bytes Total)
 1. **Neck:** Bytes 0 – 15
 2. **Left Shoulder:** Bytes 16 – 31
 3. **Right Shoulder:** Bytes 32 – 47
-4. **Lower Back:** Bytes 48 – 63
 
 ---
 
@@ -79,7 +77,7 @@ The orientation data is sent as a **64-byte payload** (4 sensors × 16 bytes eac
     - Calls `BLEServer::notify()` to serialize and transmit the data.
 
 ### Processing Flow (Data Pipeline)
-1. **Data Acquisition:** Raw 16-bit Accelerometer and Gyroscope values are read from the MPU-9250 sensors over I2C.
+1. **Data Acquisition:** Raw 16-bit Accelerometer and Gyroscope values are read from the MPU-6500 sensors over I2C.
 2. **Signal Conditioning:**
     - **Gyroscope:** Converted to $rad/s$; static bias (calculated at boot) is subtracted.
     - **Accelerometer:** Converted to $g$'s; normalized to a unit vector within the fusion algorithm.
@@ -88,5 +86,5 @@ The orientation data is sent as a **64-byte payload** (4 sensors × 16 bytes eac
     - **PI Feedback:** A Proportional-Integral controller uses this error to "drift correct" the gyroscope rates.
     - **Integration:** The corrected rates are used to calculate the quaternion derivative, which is integrated over the sample period `dt`.
     - **Normalization:** The resulting quaternion is re-normalized to maintain its unit length.
-4. **Serialization:** The quaternions ($q_w, q_x, q_y, q_z$) for each active sensor are packed into a 64-byte binary buffer (Little-Endian).
+4. **Serialization:** The quaternions ($q_w, q_x, q_y, q_z$) for each active sensor are packed into a 48-byte binary buffer (Little-Endian).
 5. **BLE Transmission:** The buffer is sent as a GATT notification to the connected client.
