@@ -90,6 +90,7 @@
             <div class="row"><span>Head Pitch</span> <b id="val-head" style="color: #fff;">0.0°</b></div>
             <div class="row"><span>Torso Slump</span> <b id="val-slump" style="color: #fff;">0.0°</b></div>
             <div class="row"><span>Lateral Lean</span> <b id="val-lean" style="color: #fff;">0.0°</b></div>
+            <div class="row" style="margin-top: 5px; padding-top: 5px; border-top: 1px solid rgba(255,255,255,0.05);"><span>Stability</span> <b id="val-stability" style="color: #38bdf8;">100%</b></div>
         </div>
 
         <div class="card">
@@ -234,9 +235,10 @@
                 document.getElementById('val-head').innerText = metrics.head.toFixed(1) + '°';
                 document.getElementById('val-slump').innerText = metrics.slump.toFixed(1) + '°';
                 document.getElementById('val-lean').innerText = metrics.lean.toFixed(1) + '°';
+                document.getElementById('val-stability').innerText = Math.round(metrics.stability) + '%';
                 const s = document.getElementById('status');
                 s.innerText = metrics.status;
-                const isBad = !metrics.status.includes('GOOD') && !metrics.status.includes('CALIB');
+                const isBad = metrics.classification === 'BAD';
                 s.className = `stat ${metrics.status.includes('CALIB') ? '' : (isBad ? 'bad' : 'good')}`;
                 materials.skin.emissiveColor = isBad ? new BABYLON.Color3(0.4, 0, 0) : new BABYLON.Color3(0.05, 0.15, 0.2);
                 materials.skin.diffuseColor = isBad ? new BABYLON.Color3(0.9, 0.2, 0.2) : new BABYLON.Color3(0.2, 0.6, 0.9);

@@ -5,6 +5,7 @@ import time
 import json
 import asyncio
 import socket
+import os
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -89,9 +90,10 @@ class Camera:
         self.is_auto_calibrating = True
         self.stability_buffer = [] # Store last 60 frames for stability check
 
-        self.head_filter = OneEuroFilter(0.3, 0.01)
-        self.slump_filter = OneEuroFilter(0.3, 0.01)
-        self.lean_filter = OneEuroFilter(0.3, 0.01)
+        self.head_filter = OneEuroFilter(0.4, 0.01)
+        self.slump_filter = OneEuroFilter(0.4, 0.01)
+        self.lean_filter = OneEuroFilter(0.4, 0.01)
+        self.confidence_filter = OneEuroFilter(0.2, 0.0) # Faster confidence smoothing
 
         self.violation_history = []
         self.status_msg = "CALIBRATING..."
@@ -101,14 +103,30 @@ class Camera:
         self.sensitivity = 1.0
         self.running = True
 
+        # Persistence & Robustness State
+        self.raw_history = {"head": [], "slump": [], "lean": []} # For Median filtering
+        self.max_d_filter = OneEuroFilter(0.8, 0.0) # More responsive max deviation filter
+        self.live_stability = 100.0
+        
+        # State Debouncer
+        self.target_classification = "GOOD"
+        self.classification_hold_frames = 0
+        self.hold_thresholds = {"GOOD": 4, "MID": 8, "BAD": 12} # Faster responsive debouncing
+        
+        self.bad_posture_start_time = None # For Auto-recalibration
+        self.ema_beta = 0.001 # Slow dynamic adaptation
+
+        # --- UDP SOCKET SETUP (Target: Uno Q) ---
         self.udp_ip = "10.10.11.84"
         self.udp_port = 9999
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.last_udp_send = 0.0
 
         self.thread = threading.Thread(target=self.update, daemon=True)
         self.thread.start()
 
     def update(self):
+        import threading
         while self.running:
             success, frame = self.cap.read()
             if not success:
@@ -146,19 +164,32 @@ class Camera:
                 raw_lean = (np.degrees(np.arctan2(wlm[12].y - wlm[11].y, wlm[12].x - wlm[11].x)) * 0.6) + \
                            (np.degrees(np.arctan2(mid_sh_x - mid_hip_x, abs(mid_hip_y - mid_sh_y))) * 0.4)
 
-                self.metrics["head"] = self.head_filter(raw_head)
-                self.metrics["slump"] = self.slump_filter(raw_slump)
-                self.metrics["lean"] = self.lean_filter(raw_lean)
+                # --- ADVANCED FILTERING (MEDIAN + ONEEURO) ---
+                def apply_robust_filter(key, val, filter_obj):
+                    self.raw_history[key].append(val)
+                    if len(self.raw_history[key]) > 9: self.raw_history[key].pop(0)
+                    median_val = np.median(self.raw_history[key])
+                    return filter_obj(median_val)
 
+                self.metrics["head"] = apply_robust_filter("head", raw_head, self.head_filter)
+                self.metrics["slump"] = apply_robust_filter("slump", raw_slump, self.slump_filter)
+                self.metrics["lean"] = apply_robust_filter("lean", raw_lean, self.lean_filter)
+
+                # --- SMART AUTO-CALIBRATION (Interquartile Mean) ---
                 if self.is_auto_calibrating:
                     self.stability_buffer.append([self.metrics["head"], self.metrics["slump"], self.metrics["lean"]])
                     if len(self.stability_buffer) > 60: # ~2 seconds
                         self.stability_buffer.pop(0)
                         vars_s = np.var(self.stability_buffer, axis=0)
                         if np.all(vars_s < 0.2): # Very stable
-                            self.baselines["head"], self.baselines["slump"], self.baselines["lean"] = np.mean(self.stability_buffer, axis=0)
+                            # Use Interquartile Mean (Trim top/bottom 10%)
+                            buf = np.array(self.stability_buffer)
+                            for i, k in enumerate(["head", "slump", "lean"]):
+                                data = np.sort(buf[:, i])
+                                low, high = int(len(data)*0.1), int(len(data)*0.9)
+                                self.baselines[k] = np.mean(data[low:high])
                             self.is_auto_calibrating = False
-                            self.status_msg = "POSTURE: GOOD"
+                            self.status_msg = "CALIBRATION OK"
                 
                 if self.calibration_requested:
                     self.baselines["head"], self.baselines["slump"], self.baselines["lean"] = self.metrics["head"], self.metrics["slump"], self.metrics["lean"]
@@ -168,6 +199,14 @@ class Camera:
                 head_dev = abs(self.metrics["head"] - self.baselines["head"])
                 slump_dev = max(0, self.metrics["slump"] - self.baselines["slump"])
                 lean_dev = abs(self.metrics["lean"] - self.baselines["lean"])
+
+                # --- DYNAMIC TOLERANCE ADAPTATION (Slow EMA) ---
+                if not self.is_auto_calibrating:
+                    # If posture is GOOD, slowly tighten. If MID, slowly relax.
+                    if self.classification == "GOOD":
+                        self.mid_limits["head"] *= (1.0 - self.ema_beta * 0.1)
+                    elif self.classification == "MID":
+                        self.mid_limits["head"] *= (1.0 + self.ema_beta)
 
                 t_head, t_slump, t_lean = self.thresholds["head"]/self.sensitivity, self.thresholds["slump"]/self.sensitivity, self.thresholds["lean"]/self.sensitivity
 
@@ -180,38 +219,95 @@ class Camera:
                 d_h = get_norm_d(head_dev, self.mid_limits["head"], self.bad_limits["head"])
                 d_s = get_norm_d(slump_dev, self.mid_limits["slump"], self.bad_limits["slump"])
                 d_l = get_norm_d(lean_dev, self.mid_limits["lean"], self.bad_limits["lean"])
-                max_d = max(d_h, d_s, d_l)
+                raw_max_d = max(d_h, d_s, d_l)
+                
+                # --- HEAVY DEVIATION SMOOTHING ---
+                max_d = self.max_d_filter(raw_max_d)
 
-                if max_d < 0.45:
-                    self.classification, self.confidence = "GOOD", 100 * (1.0 - max_d)
-                elif max_d < 0.95:
-                    self.classification, self.confidence = "MID", 100 * (1.0 - abs(max_d - 0.7))
+                # --- STATE DEBOUNCER (Hysteresis + Temporal) ---
+                if self.classification == "GOOD":
+                    # Only leave GOOD if deviation > 0.65
+                    if max_d < 0.65: new_class = "GOOD"
+                    elif max_d < 1.25: new_class = "MID"
+                    else: new_class = "BAD"
+                elif self.classification == "MID":
+                    # Return to GOOD if < 0.55. Stay in MID until > 1.25
+                    if max_d < 0.55: new_class = "GOOD"
+                    elif max_d < 1.25: new_class = "MID"
+                    else: new_class = "BAD"
+                else: # Currently BAD
+                    # Return to MID if < 1.10. Return to GOOD if < 0.55
+                    if max_d < 0.55: new_class = "GOOD"
+                    elif max_d < 1.10: new_class = "MID"
+                    else: new_class = "BAD"
+
+                # --- NON-LINEAR CONFIDENCE (Squared for forgiveness) ---
+                if max_d < 0.65: 
+                    raw_conf = 100 * (1.0 - (max_d / 0.65)**2)
+                elif max_d < 1.25: 
+                    # Center of MID is around 0.95
+                    raw_conf = 100 * (1.0 - (abs(max_d - 0.95) / 0.30)**2)
+                else: 
+                    raw_conf = min(100.0, 80 + (max_d - 1.25) * 20)
+
+                # --- LIVE STABILITY CALCULATION ---
+                # Based on the variance of the last 9 frames in raw_history
+                all_raw = np.array([self.raw_history["head"], self.raw_history["slump"], self.raw_history["lean"]])
+                if all_raw.shape[1] >= 5:
+                    var_sum = np.sum(np.var(all_raw, axis=1))
+                    self.live_stability = max(0, min(100, 100 - (var_sum * 10))) # 0-100% stability
+
+                if new_class != self.target_classification:
+                    self.target_classification = new_class
+                    self.classification_hold_frames = 0
                 else:
-                    self.classification, self.confidence = "BAD", min(100.0, 80 + (max_d - 1.0) * 20)
+                    self.classification_hold_frames += 1
+                
+                # Commit with faster thresholds
+                if self.classification_hold_frames >= self.hold_thresholds.get(self.target_classification, 10):
+                    self.classification = self.target_classification
 
-                self.confidence = round(max(50.0, self.confidence), 1)
+                # Smooth the final displayed confidence
+                self.confidence = round(self.confidence_filter(max(40.0, raw_conf)), 1)
                 self.posture_score = round(max(0, 100 - (max_d * 100)), 1)
 
                 is_violating = (max_d >= 1.0)
 
-                try:
-                    payload = json.dumps({
-                        "class": self.classification,
-                        "conf": self.confidence,
-                        "score": self.posture_score
-                    }).encode('utf-8')
-                    self.sock.sendto(payload, (self.udp_ip, self.udp_port))
-                except Exception:
-                    pass # Keep the loop running if network is down
+                # --- AUTO-RECALIBRATION LOGIC ---
+                if self.classification == "BAD":
+                    if self.bad_posture_start_time is None:
+                        self.bad_posture_start_time = time.time()
+                    elif time.time() - self.bad_posture_start_time > 10.0: # 10 seconds of BAD
+                        self.calibration_requested = True
+                        self.bad_posture_start_time = None
+                        self.status_msg = "AUTO-RECALIBRATING..."
+                else:
+                    self.bad_posture_start_time = None
+
+                # --- SEND CLASSIFICATION TO UNO Q VIA UDP (10Hz) ---
+                current_time = time.time()
+                if current_time - self.last_udp_send >= 0.1:
+                    try:
+                        payload = json.dumps({
+                            "class": self.classification,
+                            "conf": self.confidence,
+                            "score": self.posture_score
+                        }).encode('utf-8')
+                        self.sock.sendto(payload, (self.udp_ip, self.udp_port))
+                        self.last_udp_send = current_time
+                    except Exception:
+                        pass # Keep the loop running if network is down
 
                 self.violation_history.append(is_violating)
                 if len(self.violation_history) > 10: self.violation_history.pop(0)
                 
                 if not self.is_auto_calibrating:
-                    if sum(self.violation_history) >= 7:
-                        self.status_msg, self.status_color = "POSTURE: VIOLATED", (0, 0, 255)
-                    elif sum(self.violation_history) <= 3:
-                        self.status_msg, self.status_color = "POSTURE: GOOD", (0, 255, 0)
+                    if self.classification == "GOOD":
+                        self.status_color, self.status_msg = (0, 255, 0), "POSTURE: GOOD"
+                    elif self.classification == "MID":
+                        self.status_color, self.status_msg = (0, 165, 255), "POSTURE: MID"
+                    else:
+                        self.status_color, self.status_msg = (0, 0, 255), "POSTURE: VIOLATED"
 
                 overlay = frame.copy()
                 cv2.rectangle(overlay, (0, 0), (320, 240), (20, 20, 20), -1)
@@ -250,6 +346,7 @@ class Camera:
             "score": self.posture_score,
             "classification": self.classification,
             "confidence": self.confidence,
+            "stability": round(self.live_stability, 1),
             "status": self.status_msg
         }
 
@@ -301,6 +398,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     camera.status_msg = "BAD POSE SAVED"
                 elif cmd == "calibrate":
                     camera.calibration_requested = True
+                    # save_settings will be called if auto-cal finishes or via explicit teach
                 elif cmd == "increase_sensitivity":
                     camera.sensitivity = round(min(5.0, camera.sensitivity + 0.1), 1)
                 elif cmd == "decrease_sensitivity":
