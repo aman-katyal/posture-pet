@@ -1,23 +1,17 @@
-# AI & Signal Processing: Edge Intelligence
+# AI Pipeline: Edge Intelligence and Signal Processing
 
-## 🧠 The Inference Model
-We built a custom **Dense Neural Network (MLP)** designed specifically for edge deployment on the Qualcomm processor.
+## Machine Learning Model
+We developed a custom Dense Neural Network (MLP) for edge deployment on the Qualcomm QRB2210 processor.
 
-*   **Architecture**: 4-Layer MLP (Input -> 128 -> 64 -> 32 -> Output).
-*   **Optimization**: Applied **Dropout (0.3)** and **L2 Regularization** to ensure the model generalizes across different body types.
-*   **Quantization**: Model converted to **Float16 TFLite** to maximize throughput on the Qualcomm ARM core.
+*   **Architecture**: A four-layer MLP consisting of 128, 64, and 32 hidden units.
+*   **Optimization**: We used Dropout (0.3) and L2 Regularization to improve the model's ability to generalize across different users.
+*   **Deployment**: The model was converted to a Float16 TFLite format to ensure high throughput on the ARM core.
 
-## 📊 Feature Engineering (The 60-Feature Engine)
-Rather than feeding raw data, we implemented a sophisticated real-time signal processing engine:
-1.  **Temporal Statistics**: Mean, StdDev, Min, and Max over a 200-sample window.
-2.  **Spectral Energy (FFT)**: We compute the spectral power of each axis. This allows the AI to distinguish between "static good posture" and the "trembling jitter" of muscles reaching the point of failure.
-3.  **Relative Quaternions**: By computing orientations relative to the Neck MPU (using the Mahony fusion output), the model is immune to the user's absolute facing direction in the room.
+## Feature Engineering
+To provide the AI with high-quality input, we built a real-time signal processing engine that extracts 60 distinct features:
+1.  **Statistical Analysis**: The system calculates the mean, standard deviation, minimum, and maximum of sensor data over a 200-sample rolling window.
+2.  **Frequency Domain (FFT)**: We compute the spectral power for each sensor axis. This helps the AI identify micro-tremors and muscle fatigue that are often invisible to simple threshold-based systems.
+3.  **Coordinate Normalization**: By calculating orientations relative to the neck sensor, the system remains accurate regardless of which direction the user is facing.
 
-## 🛠️ Calibration & Cross-Verification
-*   **Dual-Brain Validation**: The system simultaneously processes IMU data on the Uno Q and CV data on the PC. 
-*   **Cross-Check**: If the IMU-based AI predicts "Good" but the CV model detects a "Slump," the system flags a discrepancy and prioritizes the CV "Ground Truth" for real-time correction.
-
-## 🛠 Training Pipeline
-*   **Hardware**: Trained locally on an **AMD Ryzen 9 7940HS** using **ROCm (Radeon Open Compute)** acceleration.
-*   **Data Augmentation**: To improve robustness, we implemented a synthetic jitter generator that simulates sensor noise, doubling the training dataset to **110 samples**.
-*   **Accuracy**: Achieved **98.18% cross-validation accuracy** (Average of 5-fold CV).
+## Training and Accuracy
+The model was trained on an AMD Ryzen platform using ROCm acceleration. We used data augmentation techniques, including synthetic jitter generation, to double our dataset and improve robustness. The final model achieved a cross-validation accuracy of 98.18%.

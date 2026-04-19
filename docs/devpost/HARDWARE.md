@@ -1,31 +1,31 @@
-# Hardware Architecture: The Multi-Processor Hub
+# Project Hardware: Multi-Processor Hub
 
-## 🛠️ The Stack
-The project spans three distinct hardware layers, communicating across BLE, UDP/WiFi, and internal Serial Bridges.
+## Hardware Architecture
+The project spans three distinct hardware layers, communicating across BLE, UDP over WiFi, and internal Serial Bridges.
 
 ### 1. The Wearable (ESP32-S3)
-*   **Sensors**: 3x MPU-9250 IMUs (Neck, Left Shoulder, Right Shoulder).
-*   **Sensor Fusion**: Implements a high-speed **Mahony Filter** at the edge to convert raw gyro/accel data into stable **Quaternions**.
+*   **Sensors**: 3x MPU-6500 IMUs (Neck, Left Shoulder, Right Shoulder).
+*   **Sensor Fusion**: Implements a high-speed Mahony Filter at the edge to convert raw gyro and accelerometer data into stable Quaternions.
 *   **Optimization**: A 42Hz Digital Low Pass Filter (DLPF) is applied at the register level to eliminate environmental vibration noise.
-*   **Communication**: Pushes a 48-byte custom binary payload (3x Quaternions) via **NimBLE** notifications at 20Hz.
+*   **Communication**: Transmits a 48-byte custom binary payload containing three quaternions via NimBLE notifications at 20Hz.
 
 ### 2. The Hub (Arduino Uno Q)
-The Uno Q serves as the "System Brain" using its unique dual-architecture:
+The Uno Q serves as the primary system brain, utilizing its dual-architecture design.
 *   **Qualcomm QRB2210 (Linux)**:
-    *   Runs the primary **TFLite Inference Engine** for MPU data.
-    *   Manages the BLE connection to the wearable.
-    *   Hosts a UDP server to coordinate with the PC.
+    *   Runs the primary TensorFlow Lite inference engine for processing wearable sensor data.
+    *   Manages the BLE connection to the ESP32-S3.
+    *   Hosts a UDP server to receive and process visual classification data from the PC.
 *   **STM32U585 (MCU)**:
-    *   Handles real-time hardware IO and physical feedback.
-    *   Controls servos for postural alerts and manages the LED indicator matrix.
+    *   Handles real-time hardware IO and low-level physical feedback.
+    *   Controls the servos that move the physical robot and manages the OLED display used for the pet's facial expressions.
 
 ### 3. The Visual Sensor (PC + Webcam)
-*   Runs a high-fidelity **MediaPipe CV model** to track skeletal alignment.
-*   Acts as a "Cross-Verification" source to validate IMU-based AI predictions.
+*   Runs a MediaPipe-based computer vision model to track 3D skeletal alignment.
+*   Sends classification data to the Uno Q via UDP over WiFi to cross-verify the wearable's AI predictions.
 
-## 🔗 Protocol Map
+## Protocol Map
 | Link | Protocol | Data Type |
 | :--- | :--- | :--- |
 | **ESP32 -> Uno Q** | BLE (NimBLE) | 12x Float32 (3x Quaternions) |
-| **PC -> Uno Q** | UDP (WiFi) | CV Classification + Metrics |
-| **Qualcomm -> STM32** | RouterBridge | Custom RPC (set_posture) |
+| **PC -> Uno Q** | UDP (WiFi) | CV Classification + Confidence |
+| **Qualcomm -> STM32** | RouterBridge | Custom RPC Commands (set_posture) |
