@@ -30,4 +30,5 @@ The robotic pet physically mimics your posture using servos and changes its OLED
 ## Submission Details
 
 See [docs/devpost/SUBMISSION.md](docs/devpost/SUBMISSION.md) for the full hackathon story, including our inspiration, challenges, and future plans.
+
 For 3D files, see [Onshape Files](https://cad.onshape.com/documents/3082847f6ca31ed59c7c837c/w/17ba40e810914c84b67b23d4/e/1b2842b0d1ac7e2d64288ee7?renderMode=0&uiState=69e6d445022eefb972fd2488).
